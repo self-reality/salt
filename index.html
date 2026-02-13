@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spam Can Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #ffffff; }
+    canvas { display: block; }
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 1.2rem;
+      color: #888;
+      z-index: 10;
+      transition: opacity 0.5s;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="loading">Loading model…</div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+    // ---- Renderer ----
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    // ---- Scene ----
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xffffff);
+
+    // ---- Camera ----
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    camera.position.set(0, 0, 5);
+
+    // ---- Controls ----
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1.5;
+    controls.minDistance = 1;
+    controls.maxDistance = 20;
+
+    // ---- Lighting (soft) ----
+
+    // Ambient fill
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    // Hemisphere light for natural sky/ground fill
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xd0d0d0, 0.5);
+    hemiLight.position.set(0, 10, 0);
+    scene.add(hemiLight);
+
+    // Key light
+    const dirLight1 = new THREE.DirectionalLight(0xfff5e6, 0.8);
+    dirLight1.position.set(5, 8, 7);
+    scene.add(dirLight1);
+
+    // Fill light (opposite side, softer)
+    const dirLight2 = new THREE.DirectionalLight(0xf0f0ff, 0.5);
+    dirLight2.position.set(-4, 3, -5);
+    scene.add(dirLight2);
+
+    // Rim / back light
+    const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.3);
+    dirLight3.position.set(0, -3, -6);
+    scene.add(dirLight3);
+
+    // ---- Textures ----
+    const textureLoader = new THREE.TextureLoader();
+    const basePath = 'bennyrizzo - 1950s-spam/textures/';
+
+    function loadTex(filename, colorSpace) {
+      const tex = textureLoader.load(basePath + filename);
+      tex.colorSpace = colorSpace || THREE.LinearSRGBColorSpace;
+      tex.flipY = false;
+      return tex;
+    }
+
+    const baseColorMap = loadTex('Spam_can_can_BaseColor.png', THREE.SRGBColorSpace);
+    const metallicMap  = loadTex('Spam_can_can_Metallic.png');
+    const normalMap    = loadTex('Spam_can_can_Normal.png');
+    const roughnessMap = loadTex('Spam_can_can_Roughness.png');
+
+    // ---- Gold PBR Material ----
+    const goldMaterial = new THREE.MeshStandardMaterial({
+      color: 0xD4A843,
+      map: baseColorMap,
+      metalnessMap: metallicMap,
+      metalness: 1.0,
+      roughnessMap: roughnessMap,
+      roughness: 1.0,
+      normalMap: normalMap,
+      envMapIntensity: 0.8,
+    });
+
+    // ---- Load FBX Model ----
+    const fbxLoader = new FBXLoader();
+    fbxLoader.load(
+      'bennyrizzo - 1950s-spam/source/Spam can.fbx',
+      (fbx) => {
+        // Apply gold material to every mesh in the model
+        fbx.traverse((child) => {
+          if (child.isMesh) {
+            child.material = goldMaterial;
+          }
+        });
+
+        // Auto-center and scale the model
+        // Step 1: Compute bounding box and scale to desired size first
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const desiredSize = 3;
+        const scale = desiredSize / maxDim;
+        fbx.scale.setScalar(scale);
+
+        // Step 2: Recompute bounding box after scaling, then center
+        const box2 = new THREE.Box3().setFromObject(fbx);
+        const center = box2.getCenter(new THREE.Vector3());
+        fbx.position.sub(center);
+
+        scene.add(fbx);
+
+        // Adjust camera to fit
+        camera.position.set(0, 1, 4.5);
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        // Hide loading overlay
+        document.getElementById('loading').classList.add('hidden');
+      },
+      (progress) => {
+        // progress callback (optional)
+      },
+      (error) => {
+        console.error('Error loading FBX:', error);
+        document.getElementById('loading').textContent = 'Failed to load model.';
+      }
+    );
+
+    // ---- Animation Loop ----
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // ---- Resize Handler ----
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
