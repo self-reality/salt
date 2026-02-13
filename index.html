@@ -55,6 +55,10 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xffffff);
 
+    const axes = new THREE.AxesHelper(1); // red=X, green=Y, blue=Z
+    axes.position.set(-2, -2, 2);
+    scene.add(axes);
+
     // ---- Environment Map ----
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     pmremGenerator.compileEquirectangularShader();
