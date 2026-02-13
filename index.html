@@ -105,7 +105,7 @@
     function loadTex(filename, colorSpace) {
       const tex = textureLoader.load(basePath + filename);
       tex.colorSpace = colorSpace || THREE.LinearSRGBColorSpace;
-      tex.flipY = false;
+      tex.flipY = true;
       return tex;
     }
 
