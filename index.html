@@ -67,7 +67,7 @@
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.autoRotate = true;
+    controls.autoRotate = false;
     controls.autoRotateSpeed = 1.5;
     controls.minDistance = 1;
     controls.maxDistance = 20;
@@ -110,7 +110,7 @@
     }
 
     const baseColorMap = loadTex('Spam_can_can_BaseColor.png', THREE.SRGBColorSpace);
-    const metallicMap  = loadTex('Spam_can_can_Metallic.png');
+    const metallicMap  = loadTex('Spam_can_can_Metallic_4.png');
     const normalMap    = loadTex('Spam_can_can_Normal.png');
     const roughnessMap = loadTex('Spam_can_can_Roughness.png');
 
