@@ -118,18 +118,47 @@ const goldMaterial = new THREE.MeshStandardMaterial({
 });
 
 // -----------------------------------------------------------------------------
-// Stretch (X/Y) — vertex scaling in model space from rest positions (set after FBX load)
+// Stretch (X/Y/Z) — vertex scaling in model space from rest positions (set after FBX load)
 // -----------------------------------------------------------------------------
 let canModel = null;
 let originalWidth = 1;
 let originalHeight = 1;
+let originalDepth = 1;
 
-/** Scale the can mesh(es) in X and Y from origin; Z unchanged. Uses restPositions in userData. */
-function applyStretch(width, height) {
+/** Split the can mesh(es) in half along X, Y and Z axes and move halves apart to achieve desired dimensions. Uses restPositions in userData. */
+function applyStretch(width, height, depth) {
   if (!canModel) return;
-  const stretchX = width / originalWidth;
-  const stretchY = height / originalHeight;
-  const centerX = 0, centerY = 0;
+  
+  // Calculate bounding box center from all rest positions
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+  
+  canModel.traverse((child) => {
+    if (!child.isMesh || !child.userData.restPositions) return;
+    const rest = child.userData.restPositions;
+    for (let i = 0; i < rest.length; i += 3) {
+      const restX = rest[i];
+      const restY = rest[i + 1];
+      const restZ = rest[i + 2];
+      minX = Math.min(minX, restX);
+      maxX = Math.max(maxX, restX);
+      minY = Math.min(minY, restY);
+      maxY = Math.max(maxY, restY);
+      minZ = Math.min(minZ, restZ);
+      maxZ = Math.max(maxZ, restZ);
+    }
+  });
+  
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  
+  // Calculate how much each half needs to move
+  const deltaX = (width - originalWidth) / 2;
+  const deltaY = (height - originalHeight) / 2;
+  const deltaZ = (depth - originalDepth) / 2;
+  
   canModel.traverse((child) => {
     if (!child.isMesh || !child.userData.restPositions) return;
     const rest = child.userData.restPositions;
@@ -138,9 +167,17 @@ function applyStretch(width, height) {
       const restX = rest[i * 3];
       const restY = rest[i * 3 + 1];
       const restZ = rest[i * 3 + 2];
-      const newX = centerX + (restX - centerX) * stretchX;
-      const newY = centerY + (restY - centerY) * stretchY;
-      pos.setXYZ(i, newX, newY, restZ);
+      
+      // Split X-axis: move left half left, right half right
+      const newX = restX < centerX ? restX - deltaX : restX + deltaX;
+      
+      // Split Y-axis: move bottom half down, top half up
+      const newY = restY < centerY ? restY - deltaY : restY + deltaY;
+      
+      // Split Z-axis: move back half back, front half forward
+      const newZ = restZ < centerZ ? restZ - deltaZ : restZ + deltaZ;
+      
+      pos.setXYZ(i, newX, newY, newZ);
     }
     pos.needsUpdate = true;
     child.geometry.computeVertexNormals();
@@ -150,10 +187,12 @@ function applyStretch(width, height) {
 function updateStretchFromUI() {
   const inputX = document.getElementById('stretch-x');
   const inputY = document.getElementById('stretch-y');
-  if (inputX && inputY) applyStretch(parseFloat(inputX.value), parseFloat(inputY.value));
+  const inputZ = document.getElementById('stretch-z');
+  if (inputX && inputY && inputZ) applyStretch(parseFloat(inputX.value), parseFloat(inputY.value), parseFloat(inputZ.value));
 }
 document.getElementById('stretch-x')?.addEventListener('input', updateStretchFromUI);
 document.getElementById('stretch-y')?.addEventListener('input', updateStretchFromUI);
+document.getElementById('stretch-z')?.addEventListener('input', updateStretchFromUI);
 
 // -----------------------------------------------------------------------------
 // FBX model load (apply material, scale/center, flatten hierarchy, wire stretch UI)
@@ -208,6 +247,7 @@ fbxLoader.load(
     canModel = fbx;
     originalWidth = size3.x;
     originalHeight = size3.y;
+    originalDepth = size3.z;
 
     scene.add(fbx);
 
@@ -215,12 +255,16 @@ fbxLoader.load(
     const panel = document.getElementById('stretch-panel');
     const inputX = document.getElementById('stretch-x');
     const inputY = document.getElementById('stretch-y');
+    const inputZ = document.getElementById('stretch-z');
     inputX.value = originalWidth;
     inputY.value = originalHeight;
+    inputZ.value = originalDepth;
     inputX.min = (0.5 * originalWidth).toFixed(2);
     inputX.max = (3 * originalWidth).toFixed(2);
     inputY.min = (0.5 * originalHeight).toFixed(2);
     inputY.max = (3 * originalHeight).toFixed(2);
+    inputZ.min = (0.5 * originalDepth).toFixed(2);
+    inputZ.max = (3 * originalDepth).toFixed(2);
     panel.classList.remove('hidden');
 
     camera.position.set(0, 1, 4.5);
