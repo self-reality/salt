@@ -3,7 +3,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-// ---- Renderer ----
+// -----------------------------------------------------------------------------
+// Renderer (WebGL, ACES tone mapping, sRGB output)
+// -----------------------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -12,15 +14,20 @@ renderer.toneMappingExposure = 2.5;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// ---- Scene ----
+// -----------------------------------------------------------------------------
+// Scene (white background, optional debug axes)
+// -----------------------------------------------------------------------------
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
 
-const axes = new THREE.AxesHelper(1); // red=X, green=Y, blue=Z
+// Debug axes: X=red, Y=green, Z=blue (positioned out of the way)
+const axes = new THREE.AxesHelper(1);
 axes.position.set(-2, -2, 2);
 scene.add(axes);
 
-// ---- Environment Map ----
+// -----------------------------------------------------------------------------
+// Environment map (HDR → PMREM cubemap for PBR reflections on the can)
+// -----------------------------------------------------------------------------
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
 pmremGenerator.compileEquirectangularShader();
 new RGBELoader().load(
@@ -33,7 +40,9 @@ new RGBELoader().load(
   }
 );
 
-// ---- Camera ----
+// -----------------------------------------------------------------------------
+// Camera (perspective, initial position in front of origin)
+// -----------------------------------------------------------------------------
 const camera = new THREE.PerspectiveCamera(
   45,
   window.innerWidth / window.innerHeight,
@@ -42,7 +51,9 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(0, 0, 5);
 
-// ---- Controls ----
+// -----------------------------------------------------------------------------
+// Orbit controls (drag to rotate, scroll to zoom)
+// -----------------------------------------------------------------------------
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
@@ -51,36 +62,35 @@ controls.autoRotateSpeed = 1.5;
 controls.minDistance = 1;
 controls.maxDistance = 20;
 
-// ---- Lighting (soft) ----
-
-// Ambient fill
+// -----------------------------------------------------------------------------
+// Lighting (three-point style: key, fill, rim)
+// -----------------------------------------------------------------------------
 const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
 scene.add(ambientLight);
 
-// Hemisphere light for natural sky/ground fill
 const hemiLight = new THREE.HemisphereLight(0xffffff, 0xd0d0d0, 0.5);
 hemiLight.position.set(0, 10, 0);
 scene.add(hemiLight);
 
-// Key light
-const dirLight1 = new THREE.DirectionalLight(0xfff5e6, 0.8);
+const dirLight1 = new THREE.DirectionalLight(0xfff5e6, 0.8);  // Key (warm, front-right)
 dirLight1.position.set(5, 8, 7);
 scene.add(dirLight1);
 
-// Fill light (opposite side, softer)
-const dirLight2 = new THREE.DirectionalLight(0xf0f0ff, 0.5);
+const dirLight2 = new THREE.DirectionalLight(0xf0f0ff, 0.5);  // Fill (cool, opposite side)
 dirLight2.position.set(-4, 3, -5);
 scene.add(dirLight2);
 
-// Rim / back light
-const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.3);
+const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.3);  // Rim / back
 dirLight3.position.set(0, -3, -6);
 scene.add(dirLight3);
 
-// ---- Textures ----
+// -----------------------------------------------------------------------------
+// PBR textures for the Spam can material
+// -----------------------------------------------------------------------------
 const textureLoader = new THREE.TextureLoader();
 const basePath = 'bennyrizzo - 1950s-spam/textures/';
 
+/** Loads a texture from the base path with optional color space; flips Y for correct UV orientation. */
 function loadTex(filename, colorSpace) {
   const tex = textureLoader.load(basePath + filename);
   tex.colorSpace = colorSpace || THREE.LinearSRGBColorSpace;
@@ -93,7 +103,9 @@ const metallicMap  = loadTex('Spam_can_can_Metallic_4.png');
 const normalMap    = loadTex('Spam_can_can_Normal.png');
 const roughnessMap = loadTex('Spam_can_can_Roughness.png');
 
-// ---- Gold PBR Material ----
+// -----------------------------------------------------------------------------
+// Can material (MeshStandardMaterial with baseColor, metallic, roughness, normal)
+// -----------------------------------------------------------------------------
 const goldMaterial = new THREE.MeshStandardMaterial({
   color: 0xffffff,
   map: baseColorMap,
@@ -105,11 +117,14 @@ const goldMaterial = new THREE.MeshStandardMaterial({
   envMapIntensity: 1,
 });
 
-// ---- Stretch state (set after model load) ----
+// -----------------------------------------------------------------------------
+// Stretch (X/Y) — vertex scaling in model space from rest positions (set after FBX load)
+// -----------------------------------------------------------------------------
 let canModel = null;
 let originalWidth = 1;
 let originalHeight = 1;
 
+/** Scale the can mesh(es) in X and Y from origin; Z unchanged. Uses restPositions in userData. */
 function applyStretch(width, height) {
   if (!canModel) return;
   const stretchX = width / originalWidth;
@@ -140,19 +155,18 @@ function updateStretchFromUI() {
 document.getElementById('stretch-x')?.addEventListener('input', updateStretchFromUI);
 document.getElementById('stretch-y')?.addEventListener('input', updateStretchFromUI);
 
-// ---- Load FBX Model ----
+// -----------------------------------------------------------------------------
+// FBX model load (apply material, scale/center, flatten hierarchy, wire stretch UI)
+// -----------------------------------------------------------------------------
 const fbxLoader = new FBXLoader();
 fbxLoader.load(
   'bennyrizzo - 1950s-spam/source/Spam can.fbx',
   (fbx) => {
-    // Apply gold material to every mesh in the model
     fbx.traverse((child) => {
-      if (child.isMesh) {
-        child.material = goldMaterial;
-      }
+      if (child.isMesh) child.material = goldMaterial;
     });
 
-    // Auto-center and scale the model
+    // Scale to a consistent size, then center at origin
     const box = new THREE.Box3().setFromObject(fbx);
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
@@ -164,7 +178,8 @@ fbxLoader.load(
     const center = box2.getCenter(new THREE.Vector3());
     fbx.position.sub(center);
 
-    // Normalize: bake world position into geometry (so model stays at origin), then reset entire hierarchy to identity
+    // Flatten hierarchy: bake world positions into each mesh's geometry,
+    // store a copy as restPositions for stretch, then reset all transforms to identity.
     fbx.updateMatrixWorld(true);
     fbx.traverse((child) => {
       if (!child.isMesh) return;
@@ -196,7 +211,7 @@ fbxLoader.load(
 
     scene.add(fbx);
 
-    // Stretch UI (create after we have original dimensions)
+    // Show stretch panel and sync inputs to loaded dimensions (0.5×–3× range)
     const panel = document.getElementById('stretch-panel');
     const inputX = document.getElementById('stretch-x');
     const inputY = document.getElementById('stretch-y');
@@ -208,24 +223,22 @@ fbxLoader.load(
     inputY.max = (3 * originalHeight).toFixed(2);
     panel.classList.remove('hidden');
 
-    // Adjust camera to fit
     camera.position.set(0, 1, 4.5);
     controls.target.set(0, 0, 0);
     controls.update();
 
-    // Hide loading overlay
     document.getElementById('loading').classList.add('hidden');
   },
-  (progress) => {
-    // progress callback (optional)
-  },
+  (progress) => {},
   (error) => {
     console.error('Error loading FBX:', error);
     document.getElementById('loading').textContent = 'Failed to load model.';
   }
 );
 
-// ---- Animation Loop ----
+// -----------------------------------------------------------------------------
+// Render loop (requestAnimationFrame + orbit controls update)
+// -----------------------------------------------------------------------------
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
@@ -233,7 +246,9 @@ function animate() {
 }
 animate();
 
-// ---- Resize Handler ----
+// -----------------------------------------------------------------------------
+// Window resize (update camera aspect and renderer size)
+// -----------------------------------------------------------------------------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
