@@ -23,6 +23,7 @@ scene.background = new THREE.Color(0xffffff);
 // Debug axes: X=red, Y=green, Z=blue (positioned out of the way)
 const axes = new THREE.AxesHelper(1);
 axes.position.set(-2, -2, 2);
+axes.visible = true;
 scene.add(axes);
 
 // -----------------------------------------------------------------------------
@@ -61,6 +62,23 @@ controls.autoRotate = false;
 controls.autoRotateSpeed = 1.5;
 controls.minDistance = 1;
 controls.maxDistance = 20;
+
+// Hook up UI toggles for auto-rotate and axes helper visibility.
+const autoRotateCheckbox = document.getElementById('toggle-autorotate');
+if (autoRotateCheckbox) {
+  autoRotateCheckbox.checked = controls.autoRotate;
+  autoRotateCheckbox.addEventListener('change', () => {
+    controls.autoRotate = autoRotateCheckbox.checked;
+  });
+}
+
+const axesCheckbox = document.getElementById('toggle-axes');
+if (axesCheckbox) {
+  axesCheckbox.checked = axes.visible;
+  axesCheckbox.addEventListener('change', () => {
+    axes.visible = axesCheckbox.checked;
+  });
+}
 
 // -----------------------------------------------------------------------------
 // Lighting (three-point style: key, fill, rim)
