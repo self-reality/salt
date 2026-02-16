@@ -239,6 +239,11 @@ function handleDecalFileChange(event) {
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
+    // Draw a black rectangle underneath the uploaded image.
+    // Coordinates: start (0, 501), size (1024, 259).
+    decalCtx.fillStyle = 'black';
+    decalCtx.fillRect(0, 501, 1024, 259);
+
     // Clear the artwork area and draw the user image stretched to exactly fill it (no cropping).
     decalCtx.clearRect(ARTWORK_X, ARTWORK_Y, ARTWORK_WIDTH, ARTWORK_HEIGHT);
     decalCtx.drawImage(
@@ -252,6 +257,8 @@ function handleDecalFileChange(event) {
       ARTWORK_WIDTH,
       ARTWORK_HEIGHT
     );
+
+
 
     if (decalTexture) {
       decalTexture.needsUpdate = true;
