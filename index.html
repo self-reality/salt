@@ -22,6 +22,25 @@
       transition: opacity 0.5s;
     }
     #loading.hidden { opacity: 0; pointer-events: none; }
+    .stretch-panel {
+      position: fixed;
+      bottom: 1rem;
+      left: 1rem;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.9rem;
+      color: #333;
+      background: rgba(255,255,255,0.9);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .stretch-panel.hidden { display: none; }
+    .stretch-panel label { display: flex; align-items: center; gap: 0.5rem; }
+    .stretch-panel input[type="range"] { width: 120px; }
   </style>
 
   <script type="importmap">
@@ -35,6 +54,10 @@
 </head>
 <body>
   <div id="loading">Loading model…</div>
+  <div id="stretch-panel" class="stretch-panel hidden">
+    <label>X stretch <input type="range" id="stretch-x" min="0" max="10" step="0.01" /></label>
+    <label>Y stretch <input type="range" id="stretch-y" min="0" max="10" step="0.01" /></label>
+  </div>
 
   <script type="module">
     import * as THREE from 'three';
@@ -144,6 +167,41 @@
       envMapIntensity: 1,
     });
 
+    // ---- Stretch state (set after model load) ----
+    let canModel = null;
+    let originalWidth = 1;
+    let originalHeight = 1;
+
+    function applyStretch(width, height) {
+      if (!canModel) return;
+      const stretchX = width / originalWidth;
+      const stretchY = height / originalHeight;
+      const centerX = 0, centerY = 0;
+      canModel.traverse((child) => {
+        if (!child.isMesh || !child.userData.restPositions) return;
+        const rest = child.userData.restPositions;
+        const pos = child.geometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const restX = rest[i * 3];
+          const restY = rest[i * 3 + 1];
+          const restZ = rest[i * 3 + 2];
+          const newX = centerX + (restX - centerX) * stretchX;
+          const newY = centerY + (restY - centerY) * stretchY;
+          pos.setXYZ(i, newX, newY, restZ);
+        }
+        pos.needsUpdate = true;
+        child.geometry.computeVertexNormals();
+      });
+    }
+
+    function updateStretchFromUI() {
+      const inputX = document.getElementById('stretch-x');
+      const inputY = document.getElementById('stretch-y');
+      if (inputX && inputY) applyStretch(parseFloat(inputX.value), parseFloat(inputY.value));
+    }
+    document.getElementById('stretch-x')?.addEventListener('input', updateStretchFromUI);
+    document.getElementById('stretch-y')?.addEventListener('input', updateStretchFromUI);
+
     // ---- Load FBX Model ----
     const fbxLoader = new FBXLoader();
     fbxLoader.load(
@@ -157,21 +215,60 @@
         });
 
         // Auto-center and scale the model
-        // Step 1: Compute bounding box and scale to desired size first
         const box = new THREE.Box3().setFromObject(fbx);
         const size = box.getSize(new THREE.Vector3());
-
         const maxDim = Math.max(size.x, size.y, size.z);
         const desiredSize = 3;
         const scale = desiredSize / maxDim;
         fbx.scale.setScalar(scale);
 
-        // Step 2: Recompute bounding box after scaling, then center
         const box2 = new THREE.Box3().setFromObject(fbx);
         const center = box2.getCenter(new THREE.Vector3());
         fbx.position.sub(center);
 
+        // Normalize: bake world position into geometry (so model stays at origin), then reset entire hierarchy to identity
+        fbx.updateMatrixWorld(true);
+        fbx.traverse((child) => {
+          if (!child.isMesh) return;
+          const pos = child.geometry.attributes.position;
+          const worldPos = new THREE.Vector3();
+          for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+            worldPos.set(x, y, z).applyMatrix4(child.matrixWorld);
+            pos.setXYZ(i, worldPos.x, worldPos.y, worldPos.z);
+          }
+          pos.needsUpdate = true;
+          child.geometry.computeVertexNormals();
+          child.userData.restPositions = pos.array.slice(0);
+        });
+        fbx.traverse((child) => {
+          child.position.set(0, 0, 0);
+          child.quaternion.identity();
+          child.scale.setScalar(1);
+        });
+        fbx.scale.setScalar(1);
+        fbx.position.set(0, 0, 0);
+        fbx.updateMatrixWorld(true);
+
+        const box3 = new THREE.Box3().setFromObject(fbx);
+        const size3 = box3.getSize(new THREE.Vector3());
+        canModel = fbx;
+        originalWidth = size3.x;
+        originalHeight = size3.y;
+
         scene.add(fbx);
+
+        // Stretch UI (create after we have original dimensions)
+        const panel = document.getElementById('stretch-panel');
+        const inputX = document.getElementById('stretch-x');
+        const inputY = document.getElementById('stretch-y');
+        inputX.value = originalWidth;
+        inputY.value = originalHeight;
+        inputX.min = (0.5 * originalWidth).toFixed(2);
+        inputX.max = (3 * originalWidth).toFixed(2);
+        inputY.min = (0.5 * originalHeight).toFixed(2);
+        inputY.max = (3 * originalHeight).toFixed(2);
+        panel.classList.remove('hidden');
 
         // Adjust camera to fit
         camera.position.set(0, 1, 4.5);
