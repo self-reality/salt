@@ -104,9 +104,10 @@ const normalMap    = loadTex('Spam_can_can_Normal.png');
 const roughnessMap = loadTex('Spam_can_can_Roughness.png');
 
 // Offscreen canvas/texture used for compositing a user-provided decal into the base color map.
-const ARTWORK_X = 167;
+// Previous artwork rect: X=167, Y=504, W=227, H=256
+const ARTWORK_X = 123;
 const ARTWORK_Y = 504;
-const ARTWORK_WIDTH = 227;
+const ARTWORK_WIDTH = 315;
 const ARTWORK_HEIGHT = 256;
 
 let decalCanvas = null;
