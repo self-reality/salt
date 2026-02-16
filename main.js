@@ -103,6 +103,16 @@ const metallicMap  = loadTex('Spam_can_can_Metallic_4.png');
 const normalMap    = loadTex('Spam_can_can_Normal.png');
 const roughnessMap = loadTex('Spam_can_can_Roughness.png');
 
+// Offscreen canvas/texture used for compositing a user-provided decal into the base color map.
+const ARTWORK_X = 167;
+const ARTWORK_Y = 504;
+const ARTWORK_WIDTH = 227;
+const ARTWORK_HEIGHT = 256;
+
+let decalCanvas = null;
+let decalCtx = null;
+let decalTexture = null;
+
 // -----------------------------------------------------------------------------
 // Can material (MeshStandardMaterial with baseColor, metallic, roughness, normal)
 // -----------------------------------------------------------------------------
@@ -116,6 +126,27 @@ const goldMaterial = new THREE.MeshStandardMaterial({
   normalMap: normalMap,
   envMapIntensity: 1,
 });
+
+// Initialize the decal canvas once the base color image has loaded.
+// We draw the original texture into an offscreen canvas and create a CanvasTexture from it.
+const baseImage = new Image();
+baseImage.src = basePath + 'Spam_can_can_BaseColor.png';
+baseImage.onload = () => {
+  decalCanvas = document.createElement('canvas');
+  decalCanvas.width = baseImage.width;
+  decalCanvas.height = baseImage.height;
+  decalCtx = decalCanvas.getContext('2d');
+
+  // Start with the original base color texture.
+  decalCtx.drawImage(baseImage, 0, 0);
+
+  decalTexture = new THREE.CanvasTexture(decalCanvas);
+  decalTexture.colorSpace = THREE.SRGBColorSpace;
+  decalTexture.flipY = true;
+
+  goldMaterial.map = decalTexture;
+  goldMaterial.needsUpdate = true;
+};
 
 // -----------------------------------------------------------------------------
 // Stretch (X/Y/Z) — vertex scaling in model space from rest positions (set after FBX load)
@@ -193,6 +224,62 @@ function updateStretchFromUI() {
 document.getElementById('stretch-x')?.addEventListener('input', updateStretchFromUI);
 document.getElementById('stretch-y')?.addEventListener('input', updateStretchFromUI);
 document.getElementById('stretch-z')?.addEventListener('input', updateStretchFromUI);
+
+// -----------------------------------------------------------------------------
+// Decal image upload handling (draw user image into artwork rectangle on canvas)
+// -----------------------------------------------------------------------------
+function handleDecalFileChange(event) {
+  if (!decalCtx || !decalCanvas) return;
+
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    // Clear the artwork area and draw the user image stretched to exactly fill it (no cropping).
+    decalCtx.clearRect(ARTWORK_X, ARTWORK_Y, ARTWORK_WIDTH, ARTWORK_HEIGHT);
+    decalCtx.drawImage(
+      img,
+      0,
+      0,
+      img.width,
+      img.height,
+      ARTWORK_X,
+      ARTWORK_Y,
+      ARTWORK_WIDTH,
+      ARTWORK_HEIGHT
+    );
+
+    if (decalTexture) {
+      decalTexture.needsUpdate = true;
+    }
+
+    URL.revokeObjectURL(url);
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+  };
+  img.src = url;
+}
+
+const decalInput = document.getElementById('decal-file');
+if (decalInput) {
+  decalInput.addEventListener('change', handleDecalFileChange);
+}
+
+// Allow downloading the current composited base color texture as a PNG.
+const downloadButton = document.getElementById('download-texture');
+if (downloadButton) {
+  downloadButton.addEventListener('click', () => {
+    if (!decalCanvas) return;
+    const link = document.createElement('a');
+    link.href = decalCanvas.toDataURL('image/png');
+    link.download = 'Spam_can_can_BaseColor_custom.png';
+    link.click();
+  });
+}
 
 // -----------------------------------------------------------------------------
 // FBX model load (apply material, scale/center, flatten hierarchy, wire stretch UI)

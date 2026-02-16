@@ -41,6 +41,35 @@
     .stretch-panel.hidden { display: none; }
     .stretch-panel label { display: flex; align-items: center; gap: 0.5rem; }
     .stretch-panel input[type="range"] { width: 120px; }
+    .decal-panel {
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.9rem;
+      color: #333;
+      background: rgba(255,255,255,0.9);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .decal-panel label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .decal-panel input[type="file"] {
+      font-size: 0.85rem;
+    }
+    .decal-panel button {
+      font-size: 0.85rem;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+    }
   </style>
 
   <script type="importmap">
@@ -54,6 +83,14 @@
 </head>
 <body>
   <div id="loading">Loading model…</div>
+  <div id="decal-panel" class="decal-panel">
+    <label>
+      Artwork image
+      <input type="file" id="decal-file" accept="image/*" />
+    </label>
+    <div>Placed at (167,504), size 227×256</div>
+    <button type="button" id="download-texture">Download texture PNG</button>
+  </div>
   <div id="stretch-panel" class="stretch-panel hidden">
     <label>X stretch <input type="range" id="stretch-x" min="0" max="10" step="0.01" /></label>
     <label>Y stretch <input type="range" id="stretch-y" min="0" max="10" step="0.01" /></label>
