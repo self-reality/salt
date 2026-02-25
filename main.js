@@ -220,6 +220,34 @@ if (downloadButton) {
 }
 
 // -----------------------------------------------------------------------------
+// UI: Controls panel collapse toggle + wireframe mode
+// -----------------------------------------------------------------------------
+const controlsPanel = document.getElementById('controls-panel');
+const panelToggleButton = document.getElementById('toggle-controls-panel');
+if (controlsPanel && panelToggleButton) {
+  const updatePanelToggleLabel = () => {
+    const isCollapsed = controlsPanel.classList.contains('collapsed');
+    panelToggleButton.textContent = isCollapsed ? 'Show controls' : 'Hide controls';
+    panelToggleButton.setAttribute('aria-expanded', (!isCollapsed).toString());
+  };
+
+  panelToggleButton.addEventListener('click', () => {
+    controlsPanel.classList.toggle('collapsed');
+    updatePanelToggleLabel();
+  });
+
+  updatePanelToggleLabel();
+}
+
+const wireframeCheckbox = document.getElementById('toggle-wireframe');
+if (wireframeCheckbox) {
+  wireframeCheckbox.addEventListener('change', () => {
+    goldMaterial.wireframe = wireframeCheckbox.checked;
+    goldMaterial.needsUpdate = true;
+  });
+}
+
+// -----------------------------------------------------------------------------
 // FBX model load (apply material, scale/center, flatten hierarchy, wire stretch UI)
 // -----------------------------------------------------------------------------
 const fbxLoader = new FBXLoader();

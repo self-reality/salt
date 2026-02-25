@@ -38,6 +38,19 @@
       border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
+    .controls-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .controls-panel-header-title {
+      font-weight: 600;
+    }
+    .controls-panel.collapsed #controls-panel-body {
+      display: none;
+    }
     .controls-panel label {
       display: flex;
       align-items: center;
@@ -94,39 +107,46 @@
 <body>
   <div id="loading">Loading model…</div>
   <div id="controls-panel" class="controls-panel">
-    <div class="controls-group">
-      <div class="controls-section-title">Artwork</div>
-      <label>
-        Artwork image
-        <input type="file" id="decal-file" accept="image/*" />
-      </label>
-      <div>Placed at (167,504), size 227×256</div>
-      <button type="button" id="download-texture">Download texture PNG</button>
+    <div class="controls-panel-header">
+      <span class="controls-panel-header-title">Controls</span>
+      <button type="button" id="toggle-controls-panel">Hide controls</button>
     </div>
+    <div id="controls-panel-body">
+      <div class="controls-group">
+        <div class="controls-section-title">Artwork</div>
+        <label>
+          Artwork image
+          <input type="file" id="decal-file" accept="image/*" />
+        </label>
+        <div>Placed at (167,504), size 227×256</div>
+        <button type="button" id="download-texture">Download texture PNG</button>
+      </div>
 
-    <div id="stretch-section" class="controls-group hidden">
-      <div class="controls-section-title">Stretch</div>
-      <div class="stretch-row">
-        <label for="stretch-x">X</label>
-        <input type="range" id="stretch-x" min="0" max="10" step="0.01" />
-        <input type="number" id="stretch-x-input" step="0.01" />
+      <div id="stretch-section" class="controls-group hidden">
+        <div class="controls-section-title">Stretch</div>
+        <div class="stretch-row">
+          <label for="stretch-x">X</label>
+          <input type="range" id="stretch-x" min="0" max="10" step="0.01" />
+          <input type="number" id="stretch-x-input" step="0.01" />
+        </div>
+        <div class="stretch-row">
+          <label for="stretch-y">Y</label>
+          <input type="range" id="stretch-y" min="0" max="10" step="0.01" />
+          <input type="number" id="stretch-y-input" step="0.01" />
+        </div>
+        <div class="stretch-row">
+          <label for="stretch-z">Z</label>
+          <input type="range" id="stretch-z" min="0" max="10" step="0.01" />
+          <input type="number" id="stretch-z-input" step="0.01" />
+        </div>
       </div>
-      <div class="stretch-row">
-        <label for="stretch-y">Y</label>
-        <input type="range" id="stretch-y" min="0" max="10" step="0.01" />
-        <input type="number" id="stretch-y-input" step="0.01" />
-      </div>
-      <div class="stretch-row">
-        <label for="stretch-z">Z</label>
-        <input type="range" id="stretch-z" min="0" max="10" step="0.01" />
-        <input type="number" id="stretch-z-input" step="0.01" />
-      </div>
-    </div>
 
-    <div class="controls-group">
-      <div class="controls-section-title">View</div>
-      <label><input type="checkbox" id="toggle-autorotate" /> Auto-rotate</label>
-      <label><input type="checkbox" id="toggle-axes" checked /> Show axes helper</label>
+      <div class="controls-group">
+        <div class="controls-section-title">View</div>
+        <label><input type="checkbox" id="toggle-autorotate" /> Auto-rotate</label>
+        <label><input type="checkbox" id="toggle-axes" checked /> Show axes helper</label>
+        <label><input type="checkbox" id="toggle-wireframe" /> Wireframe mode</label>
+      </div>
     </div>
   </div>
 
