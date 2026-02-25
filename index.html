@@ -22,62 +22,14 @@
       transition: opacity 0.5s;
     }
     #loading.hidden { opacity: 0; pointer-events: none; }
-    .stretch-panel {
-      position: fixed;
-      bottom: 1rem;
-      left: 1rem;
-      z-index: 5;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: 0.9rem;
-      color: #333;
-      background: rgba(255,255,255,0.9);
-      padding: 0.75rem 1rem;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    .stretch-panel.hidden { display: none; }
-    .stretch-panel label { display: flex; align-items: center; gap: 0.5rem; }
-    .stretch-panel input[type="range"] { width: 120px; }
-    .decal-panel {
-      position: fixed;
-      top: 1rem;
-      left: 1rem;
-      z-index: 5;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: 0.9rem;
-      color: #333;
-      background: rgba(255,255,255,0.9);
-      padding: 0.75rem 1rem;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    .decal-panel label {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .decal-panel input[type="file"] {
-      font-size: 0.85rem;
-    }
-    .decal-panel button {
-      font-size: 0.85rem;
-      padding: 0.25rem 0.5rem;
-      cursor: pointer;
-    }
-    .view-panel {
+    .controls-panel {
       position: fixed;
       top: 1rem;
       right: 1rem;
       z-index: 5;
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: 0.75rem;
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 0.9rem;
       color: #333;
@@ -86,11 +38,47 @@
       border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-    .view-panel label {
+    .controls-panel label {
       display: flex;
       align-items: center;
       gap: 0.5rem;
       white-space: nowrap;
+    }
+    .controls-panel input[type="file"] {
+      font-size: 0.85rem;
+    }
+    .controls-panel button {
+      font-size: 0.85rem;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+    }
+    .controls-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .controls-section-title {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .stretch-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .stretch-row label {
+      min-width: 3.2rem;
+    }
+    .stretch-row input[type="range"] {
+      flex: 1;
+    }
+    .stretch-row input[type="number"] {
+      width: 4.2rem;
+      padding: 0.1rem 0.25rem;
+      font-size: 0.85rem;
+    }
+    .hidden {
+      display: none;
     }
   </style>
 
@@ -105,22 +93,41 @@
 </head>
 <body>
   <div id="loading">Loading model…</div>
-  <div id="decal-panel" class="decal-panel">
-    <label>
-      Artwork image
-      <input type="file" id="decal-file" accept="image/*" />
-    </label>
-    <div>Placed at (167,504), size 227×256</div>
-    <button type="button" id="download-texture">Download texture PNG</button>
-  </div>
-  <div id="stretch-panel" class="stretch-panel hidden">
-    <label>X stretch <input type="range" id="stretch-x" min="0" max="10" step="0.01" /></label>
-    <label>Y stretch <input type="range" id="stretch-y" min="0" max="10" step="0.01" /></label>
-    <label>Z stretch <input type="range" id="stretch-z" min="0" max="10" step="0.01" /></label>
-  </div>
-  <div id="view-panel" class="view-panel">
-    <label><input type="checkbox" id="toggle-autorotate" /> Auto-rotate</label>
-    <label><input type="checkbox" id="toggle-axes" checked /> Show axes helper</label>
+  <div id="controls-panel" class="controls-panel">
+    <div class="controls-group">
+      <div class="controls-section-title">Artwork</div>
+      <label>
+        Artwork image
+        <input type="file" id="decal-file" accept="image/*" />
+      </label>
+      <div>Placed at (167,504), size 227×256</div>
+      <button type="button" id="download-texture">Download texture PNG</button>
+    </div>
+
+    <div id="stretch-section" class="controls-group hidden">
+      <div class="controls-section-title">Stretch</div>
+      <div class="stretch-row">
+        <label for="stretch-x">X</label>
+        <input type="range" id="stretch-x" min="0" max="10" step="0.01" />
+        <input type="number" id="stretch-x-input" step="0.01" />
+      </div>
+      <div class="stretch-row">
+        <label for="stretch-y">Y</label>
+        <input type="range" id="stretch-y" min="0" max="10" step="0.01" />
+        <input type="number" id="stretch-y-input" step="0.01" />
+      </div>
+      <div class="stretch-row">
+        <label for="stretch-z">Z</label>
+        <input type="range" id="stretch-z" min="0" max="10" step="0.01" />
+        <input type="number" id="stretch-z-input" step="0.01" />
+      </div>
+    </div>
+
+    <div class="controls-group">
+      <div class="controls-section-title">View</div>
+      <label><input type="checkbox" id="toggle-autorotate" /> Auto-rotate</label>
+      <label><input type="checkbox" id="toggle-axes" checked /> Show axes helper</label>
+    </div>
   </div>
 
   <script type="module" src="main.js"></script>

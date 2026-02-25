@@ -235,14 +235,65 @@ function applyStretch(width, height, depth) {
 }
 
 function updateStretchFromUI() {
-  const inputX = document.getElementById('stretch-x');
-  const inputY = document.getElementById('stretch-y');
-  const inputZ = document.getElementById('stretch-z');
-  if (inputX && inputY && inputZ) applyStretch(parseFloat(inputX.value), parseFloat(inputY.value), parseFloat(inputZ.value));
+  const sliderX = document.getElementById('stretch-x');
+  const sliderY = document.getElementById('stretch-y');
+  const sliderZ = document.getElementById('stretch-z');
+  const inputX = document.getElementById('stretch-x-input');
+  const inputY = document.getElementById('stretch-y-input');
+  const inputZ = document.getElementById('stretch-z-input');
+
+  if (!sliderX || !sliderY || !sliderZ) return;
+
+  const width = parseFloat(sliderX.value);
+  const height = parseFloat(sliderY.value);
+  const depth = parseFloat(sliderZ.value);
+
+  if (inputX) inputX.value = width.toFixed(2);
+  if (inputY) inputY.value = height.toFixed(2);
+  if (inputZ) inputZ.value = depth.toFixed(2);
+
+  applyStretch(width, height, depth);
 }
+
+function clampToInputRange(input, value) {
+  if (!input) return value;
+  let v = value;
+  if (Number.isNaN(v)) v = parseFloat(input.value) || 0;
+  const hasMin = input.min !== '';
+  const hasMax = input.max !== '';
+  if (hasMin) v = Math.max(v, parseFloat(input.min));
+  if (hasMax) v = Math.min(v, parseFloat(input.max));
+  input.value = v.toFixed(2);
+  return v;
+}
+
+function updateStretchFromNumberInputs() {
+  const sliderX = document.getElementById('stretch-x');
+  const sliderY = document.getElementById('stretch-y');
+  const sliderZ = document.getElementById('stretch-z');
+  const inputX = document.getElementById('stretch-x-input');
+  const inputY = document.getElementById('stretch-y-input');
+  const inputZ = document.getElementById('stretch-z-input');
+
+  if (!sliderX || !sliderY || !sliderZ || !inputX || !inputY || !inputZ) return;
+
+  const width = clampToInputRange(inputX, parseFloat(inputX.value));
+  const height = clampToInputRange(inputY, parseFloat(inputY.value));
+  const depth = clampToInputRange(inputZ, parseFloat(inputZ.value));
+
+  sliderX.value = String(width);
+  sliderY.value = String(height);
+  sliderZ.value = String(depth);
+
+  updateStretchFromUI();
+}
+
 document.getElementById('stretch-x')?.addEventListener('input', updateStretchFromUI);
 document.getElementById('stretch-y')?.addEventListener('input', updateStretchFromUI);
 document.getElementById('stretch-z')?.addEventListener('input', updateStretchFromUI);
+document.getElementById('stretch-x-input')?.addEventListener('input', updateStretchFromNumberInputs);
+document.getElementById('stretch-y-input')?.addEventListener('input', updateStretchFromNumberInputs);
+document.getElementById('stretch-z-input')?.addEventListener('input', updateStretchFromNumberInputs);
 
 // -----------------------------------------------------------------------------
 // Decal image upload handling (draw user image into artwork rectangle on canvas)
@@ -311,6 +362,7 @@ if (downloadButton) {
 // FBX model load (apply material, scale/center, flatten hierarchy, wire stretch UI)
 // -----------------------------------------------------------------------------
 const fbxLoader = new FBXLoader();
+
 fbxLoader.load(
   'bennyrizzo - 1950s-spam/source/Spam can.fbx',
   (fbx) => {
@@ -364,21 +416,48 @@ fbxLoader.load(
 
     scene.add(fbx);
 
-    // Show stretch panel and sync inputs to loaded dimensions (0.5×–3× range)
-    const panel = document.getElementById('stretch-panel');
-    const inputX = document.getElementById('stretch-x');
-    const inputY = document.getElementById('stretch-y');
-    const inputZ = document.getElementById('stretch-z');
-    inputX.value = originalWidth;
-    inputY.value = originalHeight;
-    inputZ.value = originalDepth;
-    inputX.min = (0.5 * originalWidth).toFixed(2);
-    inputX.max = (3 * originalWidth).toFixed(2);
-    inputY.min = (0.5 * originalHeight).toFixed(2);
-    inputY.max = (3 * originalHeight).toFixed(2);
-    inputZ.min = (0.5 * originalDepth).toFixed(2);
-    inputZ.max = (3 * originalDepth).toFixed(2);
-    panel.classList.remove('hidden');
+    // Show stretch section and sync inputs to loaded dimensions (0.5×–3× range)
+    const stretchSection = document.getElementById('stretch-section');
+    const sliderX = document.getElementById('stretch-x');
+    const sliderY = document.getElementById('stretch-y');
+    const sliderZ = document.getElementById('stretch-z');
+    const inputX = document.getElementById('stretch-x-input');
+    const inputY = document.getElementById('stretch-y-input');
+    const inputZ = document.getElementById('stretch-z-input');
+
+    if (sliderX && sliderY && sliderZ) {
+      sliderX.value = String(originalWidth);
+      sliderY.value = String(originalHeight);
+      sliderZ.value = String(originalDepth);
+
+      sliderX.min = (0.5 * originalWidth).toFixed(2);
+      sliderX.max = (3 * originalWidth).toFixed(2);
+      sliderY.min = (0.5 * originalHeight).toFixed(2);
+      sliderY.max = (3 * originalHeight).toFixed(2);
+      sliderZ.min = (0.5 * originalDepth).toFixed(2);
+      sliderZ.max = (3 * originalDepth).toFixed(2);
+    }
+
+    if (inputX && inputY && inputZ && sliderX && sliderY && sliderZ) {
+      inputX.min = sliderX.min;
+      inputX.max = sliderX.max;
+      inputY.min = sliderY.min;
+      inputY.max = sliderY.max;
+      inputZ.min = sliderZ.min;
+      inputZ.max = sliderZ.max;
+
+      inputX.step = sliderX.step || '0.01';
+      inputY.step = sliderY.step || '0.01';
+      inputZ.step = sliderZ.step || '0.01';
+
+      inputX.value = originalWidth.toFixed(2);
+      inputY.value = originalHeight.toFixed(2);
+      inputZ.value = originalDepth.toFixed(2);
+    }
+
+    if (stretchSection) {
+      stretchSection.classList.remove('hidden');
+    }
 
     camera.position.set(0, 1, 4.5);
     controls.target.set(0, 0, 0);
@@ -386,7 +465,8 @@ fbxLoader.load(
 
     document.getElementById('loading').classList.add('hidden');
   },
-  (progress) => {},
+  (progress) => {
+  },
   (error) => {
     console.error('Error loading FBX:', error);
     document.getElementById('loading').textContent = 'Failed to load model.';
