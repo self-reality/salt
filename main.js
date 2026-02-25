@@ -1,7 +1,11 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import {
+  setupOrbitControls,
+  initStretchControls,
+  configureStretchModel,
+} from './controls.js';
 
 // -----------------------------------------------------------------------------
 // Renderer (WebGL, ACES tone mapping, sRGB output)
@@ -55,30 +59,10 @@ camera.position.set(0, 0, 5);
 // -----------------------------------------------------------------------------
 // Orbit controls (drag to rotate, scroll to zoom)
 // -----------------------------------------------------------------------------
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.autoRotate = false;
-controls.autoRotateSpeed = 1.5;
-controls.minDistance = 1;
-controls.maxDistance = 20;
+const controls = setupOrbitControls(camera, renderer.domElement, axes);
 
-// Hook up UI toggles for auto-rotate and axes helper visibility.
-const autoRotateCheckbox = document.getElementById('toggle-autorotate');
-if (autoRotateCheckbox) {
-  autoRotateCheckbox.checked = controls.autoRotate;
-  autoRotateCheckbox.addEventListener('change', () => {
-    controls.autoRotate = autoRotateCheckbox.checked;
-  });
-}
-
-const axesCheckbox = document.getElementById('toggle-axes');
-if (axesCheckbox) {
-  axesCheckbox.checked = axes.visible;
-  axesCheckbox.addEventListener('change', () => {
-    axes.visible = axesCheckbox.checked;
-  });
-}
+// Stretch UI controls (sliders and inputs)
+initStretchControls();
 
 // -----------------------------------------------------------------------------
 // Lighting (three-point style: key, fill, rim)
@@ -170,130 +154,7 @@ baseImage.onload = () => {
 // -----------------------------------------------------------------------------
 // Stretch (X/Y/Z) — vertex scaling in model space from rest positions (set after FBX load)
 // -----------------------------------------------------------------------------
-let canModel = null;
-let originalWidth = 1;
-let originalHeight = 1;
-let originalDepth = 1;
-
-/** Split the can mesh(es) in half along X, Y and Z axes and move halves apart to achieve desired dimensions. Uses restPositions in userData. */
-function applyStretch(width, height, depth) {
-  if (!canModel) return;
-  
-  // Calculate bounding box center from all rest positions
-  let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-  let minZ = Infinity, maxZ = -Infinity;
-  
-  canModel.traverse((child) => {
-    if (!child.isMesh || !child.userData.restPositions) return;
-    const rest = child.userData.restPositions;
-    for (let i = 0; i < rest.length; i += 3) {
-      const restX = rest[i];
-      const restY = rest[i + 1];
-      const restZ = rest[i + 2];
-      minX = Math.min(minX, restX);
-      maxX = Math.max(maxX, restX);
-      minY = Math.min(minY, restY);
-      maxY = Math.max(maxY, restY);
-      minZ = Math.min(minZ, restZ);
-      maxZ = Math.max(maxZ, restZ);
-    }
-  });
-  
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  const centerZ = (minZ + maxZ) / 2;
-  
-  // Calculate how much each half needs to move
-  const deltaX = (width - originalWidth) / 2;
-  const deltaY = (height - originalHeight) / 2;
-  const deltaZ = (depth - originalDepth) / 2;
-  
-  canModel.traverse((child) => {
-    if (!child.isMesh || !child.userData.restPositions) return;
-    const rest = child.userData.restPositions;
-    const pos = child.geometry.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const restX = rest[i * 3];
-      const restY = rest[i * 3 + 1];
-      const restZ = rest[i * 3 + 2];
-      
-      // Split X-axis: move left half left, right half right
-      const newX = restX < centerX ? restX - deltaX : restX + deltaX;
-      
-      // Split Y-axis: move bottom half down, top half up
-      const newY = restY < centerY ? restY - deltaY : restY + deltaY;
-      
-      // Split Z-axis: move back half back, front half forward
-      const newZ = restZ < centerZ ? restZ - deltaZ : restZ + deltaZ;
-      
-      pos.setXYZ(i, newX, newY, newZ);
-    }
-    pos.needsUpdate = true;
-    child.geometry.computeVertexNormals();
-  });
-}
-
-function updateStretchFromUI() {
-  const sliderX = document.getElementById('stretch-x');
-  const sliderY = document.getElementById('stretch-y');
-  const sliderZ = document.getElementById('stretch-z');
-  const inputX = document.getElementById('stretch-x-input');
-  const inputY = document.getElementById('stretch-y-input');
-  const inputZ = document.getElementById('stretch-z-input');
-
-  if (!sliderX || !sliderY || !sliderZ) return;
-
-  const width = parseFloat(sliderX.value);
-  const height = parseFloat(sliderY.value);
-  const depth = parseFloat(sliderZ.value);
-
-  if (inputX) inputX.value = width.toFixed(2);
-  if (inputY) inputY.value = height.toFixed(2);
-  if (inputZ) inputZ.value = depth.toFixed(2);
-
-  applyStretch(width, height, depth);
-}
-
-function clampToInputRange(input, value) {
-  if (!input) return value;
-  let v = value;
-  if (Number.isNaN(v)) v = parseFloat(input.value) || 0;
-  const hasMin = input.min !== '';
-  const hasMax = input.max !== '';
-  if (hasMin) v = Math.max(v, parseFloat(input.min));
-  if (hasMax) v = Math.min(v, parseFloat(input.max));
-  input.value = v.toFixed(2);
-  return v;
-}
-
-function updateStretchFromNumberInputs() {
-  const sliderX = document.getElementById('stretch-x');
-  const sliderY = document.getElementById('stretch-y');
-  const sliderZ = document.getElementById('stretch-z');
-  const inputX = document.getElementById('stretch-x-input');
-  const inputY = document.getElementById('stretch-y-input');
-  const inputZ = document.getElementById('stretch-z-input');
-
-  if (!sliderX || !sliderY || !sliderZ || !inputX || !inputY || !inputZ) return;
-
-  const width = clampToInputRange(inputX, parseFloat(inputX.value));
-  const height = clampToInputRange(inputY, parseFloat(inputY.value));
-  const depth = clampToInputRange(inputZ, parseFloat(inputZ.value));
-
-  sliderX.value = String(width);
-  sliderY.value = String(height);
-  sliderZ.value = String(depth);
-
-  updateStretchFromUI();
-}
-
-document.getElementById('stretch-x')?.addEventListener('input', updateStretchFromUI);
-document.getElementById('stretch-y')?.addEventListener('input', updateStretchFromUI);
-document.getElementById('stretch-z')?.addEventListener('input', updateStretchFromUI);
-document.getElementById('stretch-x-input')?.addEventListener('input', updateStretchFromNumberInputs);
-document.getElementById('stretch-y-input')?.addEventListener('input', updateStretchFromNumberInputs);
-document.getElementById('stretch-z-input')?.addEventListener('input', updateStretchFromNumberInputs);
+// (Stretch implementation now lives in controls.js)
 
 // -----------------------------------------------------------------------------
 // Decal image upload handling (draw user image into artwork rectangle on canvas)
@@ -409,55 +270,9 @@ fbxLoader.load(
 
     const box3 = new THREE.Box3().setFromObject(fbx);
     const size3 = box3.getSize(new THREE.Vector3());
-    canModel = fbx;
-    originalWidth = size3.x;
-    originalHeight = size3.y;
-    originalDepth = size3.z;
+    configureStretchModel(fbx, size3.x, size3.y, size3.z);
 
     scene.add(fbx);
-
-    // Show stretch section and sync inputs to loaded dimensions (0.5×–3× range)
-    const stretchSection = document.getElementById('stretch-section');
-    const sliderX = document.getElementById('stretch-x');
-    const sliderY = document.getElementById('stretch-y');
-    const sliderZ = document.getElementById('stretch-z');
-    const inputX = document.getElementById('stretch-x-input');
-    const inputY = document.getElementById('stretch-y-input');
-    const inputZ = document.getElementById('stretch-z-input');
-
-    if (sliderX && sliderY && sliderZ) {
-      sliderX.value = String(originalWidth);
-      sliderY.value = String(originalHeight);
-      sliderZ.value = String(originalDepth);
-
-      sliderX.min = (0.5 * originalWidth).toFixed(2);
-      sliderX.max = (3 * originalWidth).toFixed(2);
-      sliderY.min = (0.5 * originalHeight).toFixed(2);
-      sliderY.max = (3 * originalHeight).toFixed(2);
-      sliderZ.min = (0.5 * originalDepth).toFixed(2);
-      sliderZ.max = (3 * originalDepth).toFixed(2);
-    }
-
-    if (inputX && inputY && inputZ && sliderX && sliderY && sliderZ) {
-      inputX.min = sliderX.min;
-      inputX.max = sliderX.max;
-      inputY.min = sliderY.min;
-      inputY.max = sliderY.max;
-      inputZ.min = sliderZ.min;
-      inputZ.max = sliderZ.max;
-
-      inputX.step = sliderX.step || '0.01';
-      inputY.step = sliderY.step || '0.01';
-      inputZ.step = sliderZ.step || '0.01';
-
-      inputX.value = originalWidth.toFixed(2);
-      inputY.value = originalHeight.toFixed(2);
-      inputZ.value = originalDepth.toFixed(2);
-    }
-
-    if (stretchSection) {
-      stretchSection.classList.remove('hidden');
-    }
 
     camera.position.set(0, 1, 4.5);
     controls.target.set(0, 0, 0);
