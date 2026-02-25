@@ -101,10 +101,10 @@ function loadTex(filename, colorSpace) {
   return tex;
 }
 
-const baseColorMap = loadTex('Spam_can_can_BaseColor.png', THREE.SRGBColorSpace);
-const metallicMap  = loadTex('Spam_can_can_Metallic_4.png');
-const normalMap    = loadTex('Spam_can_can_Normal.png');
-const roughnessMap = loadTex('Spam_can_can_Roughness.png');
+const baseColorMap = loadTex('BaseColor.png', THREE.SRGBColorSpace);
+const metallicMap  = loadTex('Metallic_4.png');
+const normalMap    = loadTex('Normal.png');
+const roughnessMap = loadTex('Roughness.png');
 
 // Offscreen canvas/texture used for compositing a user-provided decal into the base color map.
 // Previous artwork rect: X=167, Y=504, W=227, H=256
@@ -137,7 +137,7 @@ setupWireframeToggle(goldMaterial);
 // Initialize the decal canvas once the base color image has loaded.
 // We draw the original texture into an offscreen canvas and create a CanvasTexture from it.
 const baseImage = new Image();
-baseImage.src = basePath + 'Spam_can_can_BaseColor.png';
+baseImage.src = basePath + 'BaseColor.png';
 baseImage.onload = () => {
   decalCanvas = document.createElement('canvas');
   decalCanvas.width = baseImage.width;
@@ -209,18 +209,6 @@ function handleDecalFileChange(event) {
 const decalInput = document.getElementById('decal-file');
 if (decalInput) {
   decalInput.addEventListener('change', handleDecalFileChange);
-}
-
-// Allow downloading the current composited base color texture as a PNG.
-const downloadButton = document.getElementById('download-texture');
-if (downloadButton) {
-  downloadButton.addEventListener('click', () => {
-    if (!decalCanvas) return;
-    const link = document.createElement('a');
-    link.href = decalCanvas.toDataURL('image/png');
-    link.download = 'Spam_can_can_BaseColor_custom.png';
-    link.click();
-  });
 }
 
 // -----------------------------------------------------------------------------
