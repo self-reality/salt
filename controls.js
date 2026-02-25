@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // -----------------------------------------------------------------------------
@@ -29,6 +31,124 @@ export function setupOrbitControls(camera, domElement, axes) {
   }
 
   return controls;
+}
+
+// -----------------------------------------------------------------------------
+// Lighting controls (three-point lights + intensity sliders)
+// -----------------------------------------------------------------------------
+export function setupLighting(scene) {
+  const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
+  scene.add(ambientLight);
+
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0xd0d0d0, 0.5);
+  hemiLight.position.set(0, 10, 0);
+  scene.add(hemiLight);
+
+  const dirLight1 = new THREE.DirectionalLight(0xfff5e6, 0.8); // Key (warm, front-right)
+  dirLight1.position.set(5, 8, 7);
+  scene.add(dirLight1);
+
+  const dirLight2 = new THREE.DirectionalLight(0xf0f0ff, 0.5); // Fill (cool, opposite side)
+  dirLight2.position.set(-4, 3, -5);
+  scene.add(dirLight2);
+
+  const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.3); // Rim / back
+  dirLight3.position.set(0, -3, -6);
+  scene.add(dirLight3);
+
+  const ambientSlider = document.getElementById('light-ambient-intensity');
+  const keySlider = document.getElementById('light-key-intensity');
+  const fillSlider = document.getElementById('light-fill-intensity');
+
+  if (ambientSlider) {
+    ambientSlider.value = String(ambientLight.intensity);
+    ambientSlider.addEventListener('input', () => {
+      const value = parseFloat(ambientSlider.value);
+      if (!Number.isNaN(value)) {
+        ambientLight.intensity = value;
+      }
+    });
+  }
+
+  if (keySlider) {
+    keySlider.value = String(dirLight1.intensity);
+    keySlider.addEventListener('input', () => {
+      const value = parseFloat(keySlider.value);
+      if (!Number.isNaN(value)) {
+        dirLight1.intensity = value;
+      }
+    });
+  }
+
+  if (fillSlider) {
+    fillSlider.value = String(dirLight2.intensity);
+    fillSlider.addEventListener('input', () => {
+      const value = parseFloat(fillSlider.value);
+      if (!Number.isNaN(value)) {
+        dirLight2.intensity = value;
+        dirLight3.intensity = value;
+      }
+    });
+  }
+
+  return { ambientLight, hemiLight, dirLight1, dirLight2, dirLight3 };
+}
+
+// -----------------------------------------------------------------------------
+// Environment setup (HDR env map + UI controls)
+// -----------------------------------------------------------------------------
+export function setupEnvironmentMap(scene, renderer) {
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  pmremGenerator.compileEquirectangularShader();
+
+  new RGBELoader().load(
+    'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r164/examples/textures/equirectangular/venice_sunset_1k.hdr',
+    (hdrEquirect) => {
+      const envMap = pmremGenerator.fromEquirectangular(hdrEquirect).texture;
+      scene.environment = envMap;
+      hdrEquirect.dispose();
+      pmremGenerator.dispose();
+    }
+  );
+}
+
+export function setupEnvironmentControls(renderer, scene, material) {
+  if (!renderer || !scene || !material) return;
+
+  const envReflectionSlider = document.getElementById('env-reflection');
+  const exposureSlider = document.getElementById('env-exposure');
+  const backgroundColorInput = document.getElementById('env-background-color');
+
+  if (envReflectionSlider) {
+    const initial =
+      typeof material.envMapIntensity === 'number' ? material.envMapIntensity : 1;
+    envReflectionSlider.value = String(initial);
+    envReflectionSlider.addEventListener('input', () => {
+      const value = parseFloat(envReflectionSlider.value);
+      if (!Number.isNaN(value)) {
+        material.envMapIntensity = value;
+      }
+    });
+  }
+
+  if (exposureSlider) {
+    exposureSlider.value = String(renderer.toneMappingExposure);
+    exposureSlider.addEventListener('input', () => {
+      const value = parseFloat(exposureSlider.value);
+      if (!Number.isNaN(value)) {
+        renderer.toneMappingExposure = value;
+      }
+    });
+  }
+
+  if (backgroundColorInput && scene.background && scene.background.isColor) {
+    const initialHex = `#${scene.background.getHexString()}`;
+    backgroundColorInput.value = initialHex;
+    backgroundColorInput.addEventListener('input', () => {
+      const hex = backgroundColorInput.value;
+      scene.background.set(hex);
+    });
+  }
 }
 
 // -----------------------------------------------------------------------------
