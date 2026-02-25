@@ -5,6 +5,7 @@ import {
   setupOrbitControls,
   initStretchControls,
   configureStretchModel,
+  setupWireframeToggle,
 } from './controls.js';
 
 // -----------------------------------------------------------------------------
@@ -130,6 +131,9 @@ const goldMaterial = new THREE.MeshStandardMaterial({
   envMapIntensity: 1,
 });
 
+// Wireframe toggle checkbox (delegated to controls.js).
+setupWireframeToggle(goldMaterial);
+
 // Initialize the decal canvas once the base color image has loaded.
 // We draw the original texture into an offscreen canvas and create a CanvasTexture from it.
 const baseImage = new Image();
@@ -237,14 +241,6 @@ if (controlsPanel && panelToggleButton) {
   });
 
   updatePanelToggleLabel();
-}
-
-const wireframeCheckbox = document.getElementById('toggle-wireframe');
-if (wireframeCheckbox) {
-  wireframeCheckbox.addEventListener('change', () => {
-    goldMaterial.wireframe = wireframeCheckbox.checked;
-    goldMaterial.needsUpdate = true;
-  });
 }
 
 // -----------------------------------------------------------------------------

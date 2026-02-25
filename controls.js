@@ -32,6 +32,22 @@ export function setupOrbitControls(camera, domElement, axes) {
 }
 
 // -----------------------------------------------------------------------------
+// Wireframe mode toggle
+// -----------------------------------------------------------------------------
+export function setupWireframeToggle(material) {
+  if (!material) return;
+
+  const wireframeCheckbox = document.getElementById('toggle-wireframe');
+  if (!wireframeCheckbox) return;
+
+  wireframeCheckbox.checked = !!material.wireframe;
+  wireframeCheckbox.addEventListener('change', () => {
+    material.wireframe = wireframeCheckbox.checked;
+    material.needsUpdate = true;
+  });
+}
+
+// -----------------------------------------------------------------------------
 // Stretch controls (sliders + number inputs)
 // -----------------------------------------------------------------------------
 let stretchCanModel = null;
