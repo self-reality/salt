@@ -21,6 +21,13 @@
       z-index: 10;
       transition: opacity 0.5s;
     }
+    .value-display {
+      min-width: 3.2rem;
+      text-align: right;
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.8;
+    }
     #loading.hidden { opacity: 0; pointer-events: none; }
     .controls-panel {
       position: fixed;
@@ -170,8 +177,8 @@
             id="light-ambient-intensity"
             min="0"
             max="4"
-            step="0.01"
-          />
+            step="0.01" />
+          <span class="value-display" id="light-ambient-intensity-value"></span>
         </div>
         <div class="stretch-row">
           <label for="light-key-intensity">Key</label>
@@ -180,8 +187,8 @@
             id="light-key-intensity"
             min="0"
             max="4"
-            step="0.01"
-          />
+            step="0.01" />
+          <span class="value-display" id="light-key-intensity-value"></span>
         </div>
         <div class="stretch-row">
           <label for="light-fill-intensity">Fill/Rim</label>
@@ -190,8 +197,8 @@
             id="light-fill-intensity"
             min="0"
             max="4"
-            step="0.01"
-          />
+            step="0.01" />
+          <span class="value-display" id="light-fill-intensity-value"></span>
         </div>
       </div>
       <div class="controls-group">
@@ -202,9 +209,10 @@
             type="range"
             id="env-reflection"
             min="0"
-            max="3"
+            max="5"
             step="0.01"
           />
+          <span class="value-display" id="env-reflection-value"></span>
         </div>
         <div class="stretch-row">
           <label for="env-exposure">Exposure</label>
@@ -215,6 +223,7 @@
             max="3"
             step="0.01"
           />
+          <span class="value-display" id="env-exposure-value"></span>
         </div>
         <div class="stretch-row">
           <label for="env-background-color">Background</label>

@@ -59,34 +59,55 @@ export function setupLighting(scene) {
   const ambientSlider = document.getElementById('light-ambient-intensity');
   const keySlider = document.getElementById('light-key-intensity');
   const fillSlider = document.getElementById('light-fill-intensity');
+  const ambientValue = document.getElementById('light-ambient-intensity-value');
+  const keyValue = document.getElementById('light-key-intensity-value');
+  const fillValue = document.getElementById('light-fill-intensity-value');
 
   if (ambientSlider) {
     ambientSlider.value = String(ambientLight.intensity);
+    if (ambientValue) {
+      ambientValue.textContent = ambientLight.intensity.toFixed(2);
+    }
     ambientSlider.addEventListener('input', () => {
       const value = parseFloat(ambientSlider.value);
       if (!Number.isNaN(value)) {
         ambientLight.intensity = value;
+        if (ambientValue) {
+          ambientValue.textContent = value.toFixed(2);
+        }
       }
     });
   }
 
   if (keySlider) {
     keySlider.value = String(dirLight1.intensity);
+    if (keyValue) {
+      keyValue.textContent = dirLight1.intensity.toFixed(2);
+    }
     keySlider.addEventListener('input', () => {
       const value = parseFloat(keySlider.value);
       if (!Number.isNaN(value)) {
         dirLight1.intensity = value;
+        if (keyValue) {
+          keyValue.textContent = value.toFixed(2);
+        }
       }
     });
   }
 
   if (fillSlider) {
     fillSlider.value = String(dirLight2.intensity);
+    if (fillValue) {
+      fillValue.textContent = dirLight2.intensity.toFixed(2);
+    }
     fillSlider.addEventListener('input', () => {
       const value = parseFloat(fillSlider.value);
       if (!Number.isNaN(value)) {
         dirLight2.intensity = value;
         dirLight3.intensity = value;
+        if (fillValue) {
+          fillValue.textContent = value.toFixed(2);
+        }
       }
     });
   }
@@ -118,25 +139,39 @@ export function setupEnvironmentControls(renderer, scene, material) {
   const envReflectionSlider = document.getElementById('env-reflection');
   const exposureSlider = document.getElementById('env-exposure');
   const backgroundColorInput = document.getElementById('env-background-color');
+  const envReflectionValue = document.getElementById('env-reflection-value');
+  const exposureValue = document.getElementById('env-exposure-value');
 
   if (envReflectionSlider) {
     const initial =
       typeof material.envMapIntensity === 'number' ? material.envMapIntensity : 1;
     envReflectionSlider.value = String(initial);
+    if (envReflectionValue) {
+      envReflectionValue.textContent = initial.toFixed(2);
+    }
     envReflectionSlider.addEventListener('input', () => {
       const value = parseFloat(envReflectionSlider.value);
       if (!Number.isNaN(value)) {
         material.envMapIntensity = value;
+        if (envReflectionValue) {
+          envReflectionValue.textContent = value.toFixed(2);
+        }
       }
     });
   }
 
   if (exposureSlider) {
     exposureSlider.value = String(renderer.toneMappingExposure);
+    if (exposureValue) {
+      exposureValue.textContent = renderer.toneMappingExposure.toFixed(2);
+    }
     exposureSlider.addEventListener('input', () => {
       const value = parseFloat(exposureSlider.value);
       if (!Number.isNaN(value)) {
         renderer.toneMappingExposure = value;
+        if (exposureValue) {
+          exposureValue.textContent = value.toFixed(2);
+        }
       }
     });
   }
@@ -281,12 +316,13 @@ export function initStretchControls() {
   inputY = document.getElementById('stretch-y-input');
   inputZ = document.getElementById('stretch-z-input');
 
+  if (inputX) inputX.readOnly = true;
+  if (inputY) inputY.readOnly = true;
+  if (inputZ) inputZ.readOnly = true;
+
   if (sliderX) sliderX.addEventListener('input', updateStretchFromUI);
   if (sliderY) sliderY.addEventListener('input', updateStretchFromUI);
   if (sliderZ) sliderZ.addEventListener('input', updateStretchFromUI);
-  if (inputX) inputX.addEventListener('input', updateStretchFromNumberInputs);
-  if (inputY) inputY.addEventListener('input', updateStretchFromNumberInputs);
-  if (inputZ) inputZ.addEventListener('input', updateStretchFromNumberInputs);
 }
 
 export function configureStretchModel(model, width, height, depth) {
