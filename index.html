@@ -73,6 +73,21 @@
     .controls-section-title {
       font-weight: 600;
       margin-bottom: 0.25rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .controls-section-title::after {
+      content: '▾';
+      font-size: 0.8rem;
+      opacity: 0.7;
+    }
+    .controls-group.collapsed .controls-section-title::after {
+      content: '▸';
+    }
+    .controls-group.collapsed > :not(.controls-section-title) {
+      display: none;
     }
     .stretch-row {
       display: flex;
@@ -145,6 +160,70 @@
         <label><input type="checkbox" id="toggle-autorotate" /> Auto-rotate</label>
         <label><input type="checkbox" id="toggle-axes" checked /> Show axes helper</label>
         <label><input type="checkbox" id="toggle-wireframe" /> Wireframe mode</label>
+      </div>
+      <div class="controls-group">
+        <div class="controls-section-title">Lighting</div>
+        <div class="stretch-row">
+          <label for="light-ambient-intensity">Ambient</label>
+          <input
+            type="range"
+            id="light-ambient-intensity"
+            min="0"
+            max="4"
+            step="0.01"
+          />
+        </div>
+        <div class="stretch-row">
+          <label for="light-key-intensity">Key</label>
+          <input
+            type="range"
+            id="light-key-intensity"
+            min="0"
+            max="4"
+            step="0.01"
+          />
+        </div>
+        <div class="stretch-row">
+          <label for="light-fill-intensity">Fill/Rim</label>
+          <input
+            type="range"
+            id="light-fill-intensity"
+            min="0"
+            max="4"
+            step="0.01"
+          />
+        </div>
+      </div>
+      <div class="controls-group">
+        <div class="controls-section-title">Environment</div>
+        <div class="stretch-row">
+          <label for="env-reflection">Reflection</label>
+          <input
+            type="range"
+            id="env-reflection"
+            min="0"
+            max="3"
+            step="0.01"
+          />
+        </div>
+        <div class="stretch-row">
+          <label for="env-exposure">Exposure</label>
+          <input
+            type="range"
+            id="env-exposure"
+            min="0.5"
+            max="3"
+            step="0.01"
+          />
+        </div>
+        <div class="stretch-row">
+          <label for="env-background-color">Background</label>
+          <input
+            type="color"
+            id="env-background-color"
+            value="#ffffff"
+          />
+        </div>
       </div>
     </div>
   </div>

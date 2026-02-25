@@ -87,6 +87,42 @@ const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.3);  // Rim / back
 dirLight3.position.set(0, -3, -6);
 scene.add(dirLight3);
 
+// Lighting UI bindings
+const ambientSlider = document.getElementById('light-ambient-intensity');
+const keySlider = document.getElementById('light-key-intensity');
+const fillSlider = document.getElementById('light-fill-intensity');
+
+if (ambientSlider) {
+  ambientSlider.value = String(ambientLight.intensity);
+  ambientSlider.addEventListener('input', () => {
+    const value = parseFloat(ambientSlider.value);
+    if (!Number.isNaN(value)) {
+      ambientLight.intensity = value;
+    }
+  });
+}
+
+if (keySlider) {
+  keySlider.value = String(dirLight1.intensity);
+  keySlider.addEventListener('input', () => {
+    const value = parseFloat(keySlider.value);
+    if (!Number.isNaN(value)) {
+      dirLight1.intensity = value;
+    }
+  });
+}
+
+if (fillSlider) {
+  fillSlider.value = String(dirLight2.intensity);
+  fillSlider.addEventListener('input', () => {
+    const value = parseFloat(fillSlider.value);
+    if (!Number.isNaN(value)) {
+      dirLight2.intensity = value;
+      dirLight3.intensity = value;
+    }
+  });
+}
+
 // -----------------------------------------------------------------------------
 // PBR textures for the Spam can material
 // -----------------------------------------------------------------------------
@@ -108,10 +144,10 @@ const roughnessMap = loadTex('Roughness.png');
 
 // Offscreen canvas/texture used for compositing a user-provided decal into the base color map.
 // Previous artwork rect: X=167, Y=504, W=227, H=256
-const ARTWORK_X = 139;
-const ARTWORK_Y = 516;
-const ARTWORK_WIDTH = 283;
-const ARTWORK_HEIGHT = 230;
+const ARTWORK_X = 122;
+const ARTWORK_Y = 501;
+const ARTWORK_WIDTH = 317;
+const ARTWORK_HEIGHT = 259;
 
 let decalCanvas = null;
 let decalCtx = null;
@@ -133,6 +169,40 @@ const goldMaterial = new THREE.MeshStandardMaterial({
 
 // Wireframe toggle checkbox (delegated to controls.js).
 setupWireframeToggle(goldMaterial);
+
+// Environment / renderer UI bindings
+const envReflectionSlider = document.getElementById('env-reflection');
+const exposureSlider = document.getElementById('env-exposure');
+const backgroundColorInput = document.getElementById('env-background-color');
+
+if (envReflectionSlider) {
+  envReflectionSlider.value = String(goldMaterial.envMapIntensity ?? 1);
+  envReflectionSlider.addEventListener('input', () => {
+    const value = parseFloat(envReflectionSlider.value);
+    if (!Number.isNaN(value)) {
+      goldMaterial.envMapIntensity = value;
+    }
+  });
+}
+
+if (exposureSlider) {
+  exposureSlider.value = String(renderer.toneMappingExposure);
+  exposureSlider.addEventListener('input', () => {
+    const value = parseFloat(exposureSlider.value);
+    if (!Number.isNaN(value)) {
+      renderer.toneMappingExposure = value;
+    }
+  });
+}
+
+if (backgroundColorInput && scene.background && scene.background.isColor) {
+  const initialHex = `#${scene.background.getHexString()}`;
+  backgroundColorInput.value = initialHex;
+  backgroundColorInput.addEventListener('input', () => {
+    const hex = backgroundColorInput.value;
+    scene.background.set(hex);
+  });
+}
 
 // Initialize the decal canvas once the base color image has loaded.
 // We draw the original texture into an offscreen canvas and create a CanvasTexture from it.
@@ -230,6 +300,31 @@ if (controlsPanel && panelToggleButton) {
 
   updatePanelToggleLabel();
 }
+
+// Per-section collapse/expand for controls groups.
+const sectionTitles = document.querySelectorAll('.controls-group .controls-section-title');
+sectionTitles.forEach((title) => {
+  const group = title.closest('.controls-group');
+  if (!group) return;
+
+  title.setAttribute('role', 'button');
+  title.setAttribute('tabindex', '0');
+  title.setAttribute('aria-expanded', 'true');
+
+  const toggleGroup = () => {
+    group.classList.toggle('collapsed');
+    const isCollapsed = group.classList.contains('collapsed');
+    title.setAttribute('aria-expanded', (!isCollapsed).toString());
+  };
+
+  title.addEventListener('click', toggleGroup);
+  title.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleGroup();
+    }
+  });
+});
 
 // -----------------------------------------------------------------------------
 // FBX model load (apply material, scale/center, flatten hierarchy, wire stretch UI)
