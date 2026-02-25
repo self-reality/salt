@@ -8,6 +8,7 @@ import {
   setupLighting,
   setupEnvironmentMap,
   setupEnvironmentControls,
+  setStretchYFromFactor,
 } from './controls.js';
 
 // -----------------------------------------------------------------------------
@@ -87,6 +88,7 @@ const ARTWORK_X = 122;
 const ARTWORK_Y = 501;
 const ARTWORK_WIDTH = 317;
 const ARTWORK_HEIGHT = 259;
+const ARTWORK_ASPECT = ARTWORK_WIDTH / ARTWORK_HEIGHT;
 
 let decalCanvas = null;
 let decalCtx = null;
@@ -169,6 +171,13 @@ function handleDecalFileChange(event) {
       ARTWORK_WIDTH,
       ARTWORK_HEIGHT
     );
+
+    if (img.width > 0 && img.height > 0) {
+      const imageAspect = img.width / img.height;
+      const stretchY =
+        (ARTWORK_WIDTH * img.height) / (ARTWORK_HEIGHT * img.width);
+      setStretchYFromFactor(stretchY);
+    }
 
 
 

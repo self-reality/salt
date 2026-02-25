@@ -332,3 +332,34 @@ export function configureStretchModel(model, width, height, depth) {
   }
 }
 
+export function setStretchYFromFactor(stretchFactor) {
+  if (!stretchCanModel || !sliderY || !inputY) return;
+  if (!Number.isFinite(stretchFactor) || stretchFactor <= 0) return;
+
+  let targetHeight = originalHeight * stretchFactor;
+
+  if (sliderY.min !== '') {
+    const minH = parseFloat(sliderY.min);
+    if (!Number.isNaN(minH)) {
+      targetHeight = Math.max(targetHeight, minH);
+    }
+  }
+
+  if (sliderY.max !== '') {
+    const maxH = parseFloat(sliderY.max);
+    if (!Number.isNaN(maxH)) {
+      targetHeight = Math.min(targetHeight, maxH);
+    }
+  }
+
+  const currentWidth =
+    sliderX && sliderX.value ? parseFloat(sliderX.value) : originalWidth;
+  const currentDepth =
+    sliderZ && sliderZ.value ? parseFloat(sliderZ.value) : originalDepth;
+
+  sliderY.value = String(targetHeight);
+  inputY.value = targetHeight.toFixed(2);
+
+  applyStretch(currentWidth, targetHeight, currentDepth);
+}
+
