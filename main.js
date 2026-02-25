@@ -18,7 +18,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 2.5;
+renderer.toneMappingExposure = 1.01;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
@@ -105,7 +105,7 @@ const goldMaterial = new THREE.MeshStandardMaterial({
   roughnessMap: roughnessMap,
   roughness: 1.0,
   normalMap: normalMap,
-  envMapIntensity: 1,
+  envMapIntensity: 1.19,
 });
 
 // Wireframe toggle checkbox (delegated to controls.js).

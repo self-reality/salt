@@ -37,22 +37,22 @@ export function setupOrbitControls(camera, domElement, axes) {
 // Lighting controls (three-point lights + intensity sliders)
 // -----------------------------------------------------------------------------
 export function setupLighting(scene) {
-  const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.83);
   scene.add(ambientLight);
 
   const hemiLight = new THREE.HemisphereLight(0xffffff, 0xd0d0d0, 0.5);
   hemiLight.position.set(0, 10, 0);
   scene.add(hemiLight);
 
-  const dirLight1 = new THREE.DirectionalLight(0xfff5e6, 0.8); // Key (warm, front-right)
+  const dirLight1 = new THREE.DirectionalLight(0xfff5e6, 3.01); // Key (warm, front-right)
   dirLight1.position.set(5, 8, 7);
   scene.add(dirLight1);
 
-  const dirLight2 = new THREE.DirectionalLight(0xf0f0ff, 0.5); // Fill (cool, opposite side)
+  const dirLight2 = new THREE.DirectionalLight(0xf0f0ff, 2.92); // Fill (cool, opposite side)
   dirLight2.position.set(-4, 3, -5);
   scene.add(dirLight2);
 
-  const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.3); // Rim / back
+  const dirLight3 = new THREE.DirectionalLight(0xffffff, 2.92); // Rim / back
   dirLight3.position.set(0, -3, -6);
   scene.add(dirLight3);
 
