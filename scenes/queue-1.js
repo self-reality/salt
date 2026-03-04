@@ -41,11 +41,13 @@ export async function runQueue1Scene() {
   // Load manifest
   const manifest = await fetch(QUEUE_PATH).then((r) => r.json());
 
-  // Already sorted by height descending in manifest.
-  // Build bounce sequence: 0,1,...,49,48,...,1 (then loops)
-  const bounceSequence = [];
-  for (let i = 0; i < manifest.length; i++) bounceSequence.push(i);
-  for (let i = manifest.length - 2; i > 0; i--) bounceSequence.push(i);
+  // Sort by aspect ratio (height/width) descending — tallest first
+  manifest.sort((a, b) => (b.height / b.width) - (a.height / a.width));
+
+  // Reorder: first half tall→short, second half short→tall (bounces on loop)
+  const mid = Math.ceil(manifest.length / 2);
+  const secondHalf = manifest.splice(mid).reverse();
+  manifest.push(...secondHalf);
 
   // Renderer
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -190,10 +192,10 @@ export async function runQueue1Scene() {
       }
 
       // Start the exhibition loop
-      showArtwork(bounceSequence[0]);
+      showArtwork(0);
       setInterval(() => {
-        seqIndex = (seqIndex + 1) % bounceSequence.length;
-        showArtwork(bounceSequence[seqIndex]);
+        seqIndex = (seqIndex + 1) % manifest.length;
+        showArtwork(seqIndex);
       }, INTERVAL_MS);
     },
   });
