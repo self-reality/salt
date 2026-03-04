@@ -15,12 +15,6 @@ From the project root:
 python3 -m http.server 8000
 ```
 
-Or with Python 2:
-
-```bash
-python -m SimpleHTTPServer 8000
-```
-
 Then open **http://localhost:8000** in your browser.
 
 ### Option 2: Node.js (npx)
