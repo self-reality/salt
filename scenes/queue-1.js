@@ -41,13 +41,20 @@ export async function runQueue1Scene() {
   // Load manifest
   const manifest = await fetch(QUEUE_PATH).then((r) => r.json());
 
-  // Sort by aspect ratio (height/width) descending — tallest first
+  // Sort by aspect ratio descending (tallest first)
   manifest.sort((a, b) => (b.height / b.width) - (a.height / a.width));
 
-  // Reorder: first half tall→short, second half short→tall (bounces on loop)
-  const mid = Math.ceil(manifest.length / 2);
-  const secondHalf = manifest.splice(mid).reverse();
-  manifest.push(...secondHalf);
+  // Arrange as wave: tallest → widest → tallest (seamless loop)
+  // Even-indexed sorted items descend (tall→wide), odd-indexed reversed ascend (wide→tall)
+  const sorted = manifest.slice();
+  const descHalf = [];
+  const ascHalf = [];
+  for (let i = 0; i < sorted.length; i++) {
+    (i % 2 === 0 ? descHalf : ascHalf).push(sorted[i]);
+  }
+  ascHalf.reverse();
+  manifest.length = 0;
+  manifest.push(...descHalf, ...ascHalf);
 
   // Renderer
   const renderer = new THREE.WebGLRenderer({ antialias: true });
