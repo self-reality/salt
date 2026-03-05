@@ -186,6 +186,31 @@ export async function runQueue1Scene() {
       const preloaded = new Array(manifest.length);
       let loadedCount = 0;
 
+      // Text overlay
+      const overlay = document.createElement('div');
+      Object.assign(overlay.style, {
+        position: 'fixed',
+        bottom: '166px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: 'rgba(0,0,0,0.85)',
+        color: '#fff',
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        fontSize: '13px',
+        lineHeight: '1.5',
+        padding: '8px 16px',
+        borderRadius: '8px',
+        textAlign: 'center',
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+        zIndex: '1000',
+      });
+      document.body.appendChild(overlay);
+
+      function updateOverlay(item) {
+        overlay.innerHTML = `${item.username}<br>${item.name}`;
+      }
+
       function onAllPreloaded() {
         // Filter out failed loads
         const validItems = [];
@@ -196,16 +221,19 @@ export async function runQueue1Scene() {
 
         let seqIndex = 0;
         setArtworkFromImage(validItems[0], applyStretchY);
+        updateOverlay(validItems[0]._item);
 
         setInterval(() => {
           seqIndex = (seqIndex + 1) % validItems.length;
           setArtworkFromImage(validItems[seqIndex], applyStretchY);
+          updateOverlay(validItems[seqIndex]._item);
         }, INTERVAL_MS);
       }
 
       for (let i = 0; i < manifest.length; i++) {
         const item = manifest[i];
         const img = new Image();
+        img._item = item;
         img.onload = () => {
           preloaded[i] = img;
           loadedCount++;
