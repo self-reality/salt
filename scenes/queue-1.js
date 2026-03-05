@@ -120,7 +120,7 @@ export async function runQueue1Scene() {
   loadCan({
     modelPath: MODEL_PATH,
     texturePath: TEXTURE_PATH,
-    onLoaded({ canGroup, material, setArtworkFromUrl, width, height, depth }) {
+    onLoaded({ canGroup, material, setArtworkFromUrl, setArtworkFromImage, width, height, depth }) {
       material.envMapIntensity = ENV_MAP_INTENSITY;
       scene.add(canGroup);
 
@@ -176,34 +176,42 @@ export async function runQueue1Scene() {
         });
       }
 
-      // Check which artworks exist, then start the loop
-      let seqIndex = 0;
-      const notFound = [];
+      // Preload all artwork images into memory, then start the loop
+      const preloaded = new Array(manifest.length);
+      let loadedCount = 0;
 
-      function showArtwork(idx) {
-        const item = manifest[idx];
-        const url = ARTWORK_BASE_PATH + item.filename;
-        setArtworkFromUrl(url, applyStretchY);
+      function onAllPreloaded() {
+        // Filter out failed loads
+        const validItems = [];
+        for (let i = 0; i < manifest.length; i++) {
+          if (preloaded[i]) validItems.push(preloaded[i]);
+        }
+        if (validItems.length === 0) return;
+
+        let seqIndex = 0;
+        setArtworkFromImage(validItems[0], applyStretchY);
+
+        setInterval(() => {
+          seqIndex = (seqIndex + 1) % validItems.length;
+          setArtworkFromImage(validItems[seqIndex], applyStretchY);
+        }, INTERVAL_MS);
       }
 
-      // Log missing files by trying to load each image once
-      const checked = new Set();
-      for (const item of manifest) {
-        if (checked.has(item.filename)) continue;
-        checked.add(item.filename);
+      for (let i = 0; i < manifest.length; i++) {
+        const item = manifest[i];
         const img = new Image();
+        img.onload = () => {
+          preloaded[i] = img;
+          loadedCount++;
+          if (loadedCount === manifest.length) onAllPreloaded();
+        };
         img.onerror = () => {
           console.warn(`Artwork not found: ${ARTWORK_BASE_PATH + item.filename} (${item.username} — "${item.name}")`);
+          loadedCount++;
+          if (loadedCount === manifest.length) onAllPreloaded();
         };
         img.src = ARTWORK_BASE_PATH + item.filename;
       }
-
-      // Start the exhibition loop
-      showArtwork(0);
-      setInterval(() => {
-        seqIndex = (seqIndex + 1) % manifest.length;
-        showArtwork(seqIndex);
-      }, INTERVAL_MS);
     },
   });
 
