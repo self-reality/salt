@@ -202,6 +202,32 @@
         </div>
       </div>
       <div class="controls-group">
+        <div class="controls-section-title">Pixel Art</div>
+        <label><input type="checkbox" id="pixel-art-enable" checked /> Enable</label>
+        <div class="stretch-row">
+          <label for="pixel-art-color">Color</label>
+          <input
+            type="range"
+            id="pixel-art-color"
+            min="2"
+            max="256"
+            step="1"
+            value="8" />
+          <span class="value-display" id="pixel-art-color-value">8</span>
+        </div>
+        <div class="stretch-row">
+          <label for="pixel-art-amount">Amount</label>
+          <input
+            type="range"
+            id="pixel-art-amount"
+            min="1"
+            max="32"
+            step="1"
+            value="4" />
+          <span class="value-display" id="pixel-art-amount-value">4</span>
+        </div>
+      </div>
+      <div class="controls-group">
         <div class="controls-section-title">Environment</div>
         <div class="stretch-row">
           <label for="env-reflection">Reflection</label>

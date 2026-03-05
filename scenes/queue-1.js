@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadCan } from '../lib/can.js';
+import { setupPixelArtPass } from '../lib/post-processing.js';
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -116,6 +117,11 @@ export async function runQueue1Scene() {
   dirLight3.position.set(...RIM_LIGHT_POSITION);
   scene.add(dirLight3);
 
+  // Post-processing (hardcoded defaults from test scene tuning)
+  const { composer, pixelArtPass } = setupPixelArtPass(renderer, scene, camera);
+  pixelArtPass.uniforms.pixelSize.value = 4;
+  pixelArtPass.uniforms.colorLevels.value = 8;
+
   // Load can
   loadCan({
     modelPath: MODEL_PATH,
@@ -219,7 +225,7 @@ export async function runQueue1Scene() {
   function animate() {
     requestAnimationFrame(animate);
     controls.update();
-    renderer.render(scene, camera);
+    composer.render();
   }
   animate();
 
@@ -228,5 +234,10 @@ export async function runQueue1Scene() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+    pixelArtPass.uniforms.resolution.value.set(
+      window.innerWidth * renderer.getPixelRatio(),
+      window.innerHeight * renderer.getPixelRatio(),
+    );
   });
 }

@@ -368,6 +368,50 @@ export function configureStretchModel(model, width, height, depth) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Pixel Art post-processing controls
+// -----------------------------------------------------------------------------
+export function setupPixelArtControls(pixelArtPass) {
+  if (!pixelArtPass) return;
+
+  const enableCheckbox = document.getElementById('pixel-art-enable');
+  const colorSlider = document.getElementById('pixel-art-color');
+  const amountSlider = document.getElementById('pixel-art-amount');
+  const colorValue = document.getElementById('pixel-art-color-value');
+  const amountValue = document.getElementById('pixel-art-amount-value');
+
+  if (enableCheckbox) {
+    enableCheckbox.checked = pixelArtPass.enabled;
+    enableCheckbox.addEventListener('change', () => {
+      pixelArtPass.enabled = enableCheckbox.checked;
+    });
+  }
+
+  if (colorSlider) {
+    colorSlider.value = String(pixelArtPass.uniforms.colorLevels.value);
+    if (colorValue) colorValue.textContent = String(pixelArtPass.uniforms.colorLevels.value);
+    colorSlider.addEventListener('input', () => {
+      const v = parseFloat(colorSlider.value);
+      if (!Number.isNaN(v)) {
+        pixelArtPass.uniforms.colorLevels.value = v;
+        if (colorValue) colorValue.textContent = String(v);
+      }
+    });
+  }
+
+  if (amountSlider) {
+    amountSlider.value = String(pixelArtPass.uniforms.pixelSize.value);
+    if (amountValue) amountValue.textContent = String(pixelArtPass.uniforms.pixelSize.value);
+    amountSlider.addEventListener('input', () => {
+      const v = parseFloat(amountSlider.value);
+      if (!Number.isNaN(v)) {
+        pixelArtPass.uniforms.pixelSize.value = v;
+        if (amountValue) amountValue.textContent = String(v);
+      }
+    });
+  }
+}
+
 export function setStretchYFromFactor(stretchFactor) {
   if (!stretchCanModel || !sliderY || !inputY) return;
   if (!Number.isFinite(stretchFactor) || stretchFactor <= 0) return;

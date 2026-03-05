@@ -10,6 +10,8 @@ import {
   setStretchYFromFactor,
 } from '../controls.js';
 import { loadCan } from '../lib/can.js';
+import { setupPixelArtPass } from '../lib/post-processing.js';
+import { setupPixelArtControls } from '../controls.js';
 
 export function runTestScene() {
   // ---------------------------------------------------------------------------
@@ -55,6 +57,12 @@ export function runTestScene() {
   // Lighting
   // ---------------------------------------------------------------------------
   setupLighting(scene);
+
+  // ---------------------------------------------------------------------------
+  // Post-processing
+  // ---------------------------------------------------------------------------
+  const { composer, pixelArtPass } = setupPixelArtPass(renderer, scene, camera);
+  setupPixelArtControls(pixelArtPass);
 
   // ---------------------------------------------------------------------------
   // Load can
@@ -131,7 +139,7 @@ export function runTestScene() {
   function animate() {
     requestAnimationFrame(animate);
     controls.update();
-    renderer.render(scene, camera);
+    composer.render();
   }
   animate();
 
@@ -142,5 +150,10 @@ export function runTestScene() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+    pixelArtPass.uniforms.resolution.value.set(
+      window.innerWidth * renderer.getPixelRatio(),
+      window.innerHeight * renderer.getPixelRatio(),
+    );
   });
 }
