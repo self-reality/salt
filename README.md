@@ -44,3 +44,13 @@ Then open **http://localhost:8000**.
 ---
 
 After the server is running, open the given URL in your browser to view the 3D Spam can. Use the mouse to orbit, zoom, and pan.
+
+## Scenes
+
+Select a scene via the `?scene=` query parameter:
+
+| URL | Scene |
+|-----|-------|
+| `http://localhost:8000/` | Queue scene (default) — cycles through artworks automatically |
+| `http://localhost:8000/?scene=queue-1` | Same as above |
+| `http://localhost:8000/?scene=test` | Test scene — full controls UI for tweaking lighting, stretch, and pixel art effect |
