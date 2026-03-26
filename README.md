@@ -47,10 +47,10 @@ After the server is running, open the given URL in your browser to view the 3D S
 
 ## Scenes
 
-Select a scene via the `?scene=` query parameter:
+Select a scene via the `?scene=` query parameter (handy for local dev). When deployed to GitHub Pages, `queue-1` is the default when `?scene` is omitted, so the site root (`/`) already shows the queue scene.
 
 | URL | Scene |
 |-----|-------|
 | `http://localhost:8000/` | Queue scene (default) — cycles through artworks automatically |
-| `http://localhost:8000/?scene=queue-1` | Same as above |
+| `http://localhost:8000/?scene=queue-1` | Same as above (optional) |
 | `http://localhost:8000/?scene=test` | Test scene — full controls UI for tweaking lighting, stretch, and pixel art effect |
