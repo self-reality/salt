@@ -215,23 +215,93 @@ export async function runQueue1Scene() {
         overlay.innerHTML = `${item.username}<br>${item.name}`;
       }
 
+      // Pause button (placed below the artist/work overlay text).
+      // The overlay itself stays `pointerEvents: none` so OrbitControls drag remains unaffected.
+      const pauseButton = document.createElement('button');
+      pauseButton.type = 'button';
+      pauseButton.textContent = 'Pause';
+      Object.assign(pauseButton.style, {
+        position: 'fixed',
+        bottom: '140px', // Repositioned once overlay has its first content.
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: 'rgba(0,0,0,0.85)',
+        color: '#fff',
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        fontSize: '13px',
+        lineHeight: '1.5',
+        padding: '6px 14px',
+        borderRadius: '8px',
+        border: 'none',
+        cursor: 'pointer',
+        pointerEvents: 'auto',
+        whiteSpace: 'nowrap',
+        zIndex: '1001',
+      });
+      pauseButton.setAttribute('aria-label', 'Pause artwork cycling');
+      document.body.appendChild(pauseButton);
+
+      let isPaused = false;
+      let artworkIntervalId = null;
+      let validItems = null;
+      let seqIndex = 0;
+
+      function applyArtworkByIndex(index) {
+        if (!validItems || validItems.length === 0) return;
+        const item = validItems[index];
+        setArtworkFromImage(item, applyStretchY);
+        updateOverlay(item._item);
+      }
+
+      function startArtworkLoop() {
+        if (!validItems || validItems.length === 0) return;
+        if (artworkIntervalId) return;
+        artworkIntervalId = window.setInterval(() => {
+          seqIndex = (seqIndex + 1) % validItems.length;
+          applyArtworkByIndex(seqIndex);
+        }, INTERVAL_MS);
+      }
+
+      function stopArtworkLoop() {
+        if (!artworkIntervalId) return;
+        window.clearInterval(artworkIntervalId);
+        artworkIntervalId = null;
+      }
+
+      function positionPauseButton() {
+        const overlayRect = overlay.getBoundingClientRect();
+        const buttonRect = pauseButton.getBoundingClientRect();
+        const overlayBottomFromViewportBottom = window.innerHeight - overlayRect.bottom;
+        const gapPx = 6;
+        const newBottom = overlayBottomFromViewportBottom - (buttonRect.height + gapPx);
+        pauseButton.style.bottom = `${Math.max(8, newBottom)}px`;
+      }
+
+      pauseButton.addEventListener('click', () => {
+        isPaused = !isPaused;
+        pauseButton.textContent = isPaused ? 'Play' : 'Pause';
+        pauseButton.setAttribute(
+          'aria-label',
+          isPaused ? 'Play artwork cycling' : 'Pause artwork cycling',
+        );
+        if (isPaused) stopArtworkLoop();
+        else startArtworkLoop();
+      });
+
       function onAllPreloaded() {
         // Filter out failed loads
-        const validItems = [];
+        validItems = [];
         for (let i = 0; i < manifest.length; i++) {
           if (preloaded[i]) validItems.push(preloaded[i]);
         }
         if (validItems.length === 0) return;
 
-        let seqIndex = 0;
-        setArtworkFromImage(validItems[0], applyStretchY);
-        updateOverlay(validItems[0]._item);
+        stopArtworkLoop();
+        seqIndex = 0;
+        applyArtworkByIndex(seqIndex);
 
-        setInterval(() => {
-          seqIndex = (seqIndex + 1) % validItems.length;
-          setArtworkFromImage(validItems[seqIndex], applyStretchY);
-          updateOverlay(validItems[seqIndex]._item);
-        }, INTERVAL_MS);
+        positionPauseButton();
+        if (!isPaused) startArtworkLoop();
       }
 
       for (let i = 0; i < manifest.length; i++) {
@@ -250,6 +320,8 @@ export async function runQueue1Scene() {
         };
         img.src = ARTWORK_BASE_PATH + item.filename;
       }
+
+      window.addEventListener('resize', positionPauseButton);
     },
   });
 
