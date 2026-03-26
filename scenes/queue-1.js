@@ -39,6 +39,10 @@ const QUEUE_PATH = 'queue/queue-1-manifest.json';
 // Scene
 // ---------------------------------------------------------------------------
 export async function runQueue1Scene() {
+  // This scene shouldn't show the global controls UI.
+  const controlsPanel = document.getElementById('controls-panel');
+  if (controlsPanel) controlsPanel.classList.add('hidden');
+
   // Load manifest
   const manifest = await fetch(QUEUE_PATH).then((r) => r.json());
 
