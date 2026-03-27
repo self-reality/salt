@@ -33,7 +33,79 @@ const ENV_MAP_URL =
 
 const MODEL_PATH = 'bennyrizzo - 1950s-spam/source/Spam can.fbx';
 const TEXTURE_PATH = 'bennyrizzo - 1950s-spam/textures/';
-const QUEUE_PATH = 'queue/queue-1-manifest.json';
+const DATASET_PATH = 'queue/most-expensive-artworks.json';
+const SAMPLE_SIZE = 50;
+
+function toSha1Hex(input) {
+  const bytes = new TextEncoder().encode(input);
+  return crypto.subtle.digest('SHA-1', bytes).then((buf) => {
+    const view = new Uint8Array(buf);
+    return Array.from(view, (b) => b.toString(16).padStart(2, '0')).join('');
+  });
+}
+
+function toSlug(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function extCandidatesFromMediaType(mediaType) {
+  const normalized = String(mediaType || '').toLowerCase();
+  if (normalized.includes('png')) return ['png', 'jpg', 'jpeg', 'webp'];
+  if (normalized.includes('jpeg') || normalized.includes('jpg')) return ['jpg', 'jpeg', 'png', 'webp'];
+  if (normalized.includes('webp')) return ['webp', 'jpg', 'jpeg', 'png'];
+  if (normalized.includes('gif')) return ['gif', 'png', 'jpg', 'jpeg'];
+  return ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+}
+
+async function buildRandomManifestFromDataset() {
+  const dataset = await fetch(DATASET_PATH).then((r) => r.json());
+  const shuffled = dataset.slice();
+
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = shuffled[i];
+    shuffled[i] = shuffled[j];
+    shuffled[j] = tmp;
+  }
+
+  const result = [];
+  for (const entry of shuffled) {
+    if (result.length >= SAMPLE_SIZE) break;
+
+    const username = entry?.creator?.username;
+    const name = entry?.metadata?.name;
+    const width = Number(entry?.metadata?.width);
+    const height = Number(entry?.metadata?.height);
+    if (!username || !name || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      continue;
+    }
+
+    const usernameSlug = toSlug(username);
+    const nameSlug = toSlug(name);
+    if (!usernameSlug || !nameSlug) continue;
+
+    const sha1 = await toSha1Hex(username);
+    const hash8 = sha1.slice(0, 8);
+    const extCandidates = extCandidatesFromMediaType(entry?.metadata?.mediaType);
+    const filenameCandidates = extCandidates.map((ext) => `${usernameSlug}__${hash8}__${nameSlug}.${ext}`);
+
+    result.push({
+      username,
+      name,
+      width,
+      height,
+      filename: filenameCandidates[0],
+      filenameCandidates,
+    });
+  }
+
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // Scene
@@ -43,8 +115,8 @@ export async function runQueue1Scene() {
   const controlsPanel = document.getElementById('controls-panel');
   if (controlsPanel) controlsPanel.classList.add('hidden');
 
-  // Load manifest
-  const manifest = await fetch(QUEUE_PATH).then((r) => r.json());
+  // Build a random local manifest from the expensive-artworks dataset.
+  const manifest = await buildRandomManifestFromDataset();
 
   // Sort by aspect ratio descending (tallest first)
   manifest.sort((a, b) => (b.height / b.width) - (a.height / a.width));
@@ -304,21 +376,48 @@ export async function runQueue1Scene() {
         if (!isPaused) startArtworkLoop();
       }
 
-      for (let i = 0; i < manifest.length; i++) {
-        const item = manifest[i];
+      function preloadLocalArtworkWithCandidates(item, onSuccess, onFailure) {
+        const candidates = Array.isArray(item.filenameCandidates) && item.filenameCandidates.length > 0
+          ? item.filenameCandidates
+          : [item.filename];
+        let candidateIndex = 0;
         const img = new Image();
         img._item = item;
+
+        function tryNext() {
+          if (candidateIndex >= candidates.length) {
+            onFailure(candidates);
+            return;
+          }
+          const filename = candidates[candidateIndex++];
+          img.src = ARTWORK_BASE_PATH + filename;
+        }
+
         img.onload = () => {
-          preloaded[i] = img;
-          loadedCount++;
-          if (loadedCount === manifest.length) onAllPreloaded();
+          item.filename = candidates[candidateIndex - 1] || item.filename;
+          onSuccess(img);
         };
-        img.onerror = () => {
-          console.warn(`Artwork not found: ${ARTWORK_BASE_PATH + item.filename} (${item.username} — "${item.name}")`);
-          loadedCount++;
-          if (loadedCount === manifest.length) onAllPreloaded();
-        };
-        img.src = ARTWORK_BASE_PATH + item.filename;
+        img.onerror = tryNext;
+        tryNext();
+      }
+
+      for (let i = 0; i < manifest.length; i++) {
+        const item = manifest[i];
+        preloadLocalArtworkWithCandidates(
+          item,
+          (img) => {
+            preloaded[i] = img;
+            loadedCount++;
+            if (loadedCount === manifest.length) onAllPreloaded();
+          },
+          (triedCandidates) => {
+            console.warn(
+              `Artwork not found in /artworks: ${triedCandidates.join(', ')} (${item.username} — "${item.name}")`,
+            );
+            loadedCount++;
+            if (loadedCount === manifest.length) onAllPreloaded();
+          },
+        );
       }
 
       window.addEventListener('resize', positionPauseButton);
