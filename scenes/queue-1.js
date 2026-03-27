@@ -62,8 +62,7 @@ function extCandidatesFromMediaType(mediaType) {
   return ['jpg', 'jpeg', 'png', 'webp', 'gif'];
 }
 
-async function buildRandomManifestFromDataset() {
-  const dataset = await fetch(DATASET_PATH).then((r) => r.json());
+async function buildRandomManifestFromDataset(dataset) {
   const shuffled = dataset.slice();
 
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -107,6 +106,50 @@ async function buildRandomManifestFromDataset() {
   return result;
 }
 
+function findArtistInDataset(dataset, query) {
+  const q = String(query || '').toLowerCase().trim();
+  if (!q) return null;
+  return (
+    dataset.find((e) => String(e?.creator?.username || '').toLowerCase() === q) ||
+    dataset.find((e) => String(e?.creator?.fullName || '').toLowerCase() === q) ||
+    dataset.find((e) => String(e?.creator?.username || '').toLowerCase().includes(q)) ||
+    dataset.find((e) => String(e?.creator?.fullName || '').toLowerCase().includes(q)) ||
+    null
+  );
+}
+
+function insertIndexInWave(validItems, aspectRatio) {
+  // validItems is wave-sorted: descending aspect ratio first half, ascending second half.
+  // Find where this aspect ratio belongs to maintain the wave order.
+  const n = validItems.length;
+  if (n === 0) return 0;
+
+  // Detect the split point (where descending half ends and ascending half begins).
+  let splitIndex = n;
+  for (let i = 1; i < n; i++) {
+    const prevAR = validItems[i - 1]._item.height / validItems[i - 1]._item.width;
+    const curAR = validItems[i]._item.height / validItems[i]._item.width;
+    if (curAR > prevAR) {
+      splitIndex = i;
+      break;
+    }
+  }
+
+  // Try descending half first (indices 0..splitIndex-1), tall→wide
+  for (let i = 0; i < splitIndex; i++) {
+    const ar = validItems[i]._item.height / validItems[i]._item.width;
+    if (aspectRatio >= ar) return i;
+  }
+
+  // Then ascending half (indices splitIndex..n-1), wide→tall
+  for (let i = splitIndex; i < n; i++) {
+    const ar = validItems[i]._item.height / validItems[i]._item.width;
+    if (aspectRatio <= ar) return i;
+  }
+
+  return n;
+}
+
 // ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
@@ -115,8 +158,12 @@ export async function runQueue1Scene() {
   const controlsPanel = document.getElementById('controls-panel');
   if (controlsPanel) controlsPanel.classList.add('hidden');
 
+  // Read ?artist= query parameter
+  const requestedArtist = new URLSearchParams(location.search).get('artist');
+
   // Build a random local manifest from the expensive-artworks dataset.
-  const manifest = await buildRandomManifestFromDataset();
+  const fullDataset = await fetch(DATASET_PATH).then((r) => r.json());
+  const manifest = await buildRandomManifestFromDataset(fullDataset);
 
   // Sort by aspect ratio descending (tallest first)
   manifest.sort((a, b) => (b.height / b.width) - (a.height / a.width));
@@ -360,6 +407,34 @@ export async function runQueue1Scene() {
         else startArtworkLoop();
       });
 
+      function pauseOnIndex(index) {
+        seqIndex = index;
+        applyArtworkByIndex(seqIndex);
+        isPaused = true;
+        stopArtworkLoop();
+        pauseButton.textContent = 'Play';
+        pauseButton.setAttribute('aria-label', 'Play artwork cycling');
+      }
+
+      async function buildEntryFromDatasetItem(entry) {
+        const username = entry?.creator?.username;
+        const name = entry?.metadata?.name;
+        const width = Number(entry?.metadata?.width);
+        const height = Number(entry?.metadata?.height);
+        if (!username || !name || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+          return null;
+        }
+        const usernameSlug = toSlug(username);
+        const nameSlug = toSlug(name);
+        if (!usernameSlug || !nameSlug) return null;
+
+        const sha1 = await toSha1Hex(username);
+        const hash8 = sha1.slice(0, 8);
+        const extCandidates = extCandidatesFromMediaType(entry?.metadata?.mediaType);
+        const filenameCandidates = extCandidates.map((ext) => `${usernameSlug}__${hash8}__${nameSlug}.${ext}`);
+        return { username, name, width, height, filename: filenameCandidates[0], filenameCandidates };
+      }
+
       function onAllPreloaded() {
         // Filter out failed loads
         validItems = [];
@@ -373,6 +448,31 @@ export async function runQueue1Scene() {
         applyArtworkByIndex(seqIndex);
 
         positionPauseButton();
+
+        if (requestedArtist) {
+          const match = findArtistInDataset(fullDataset, requestedArtist);
+          if (match) {
+            buildEntryFromDatasetItem(match).then((item) => {
+              if (!item) { if (!isPaused) startArtworkLoop(); return; }
+              preloadLocalArtworkWithCandidates(
+                item,
+                (img) => {
+                  const ar = item.height / item.width;
+                  const insertIdx = insertIndexInWave(validItems, ar);
+                  validItems.splice(insertIdx, 0, img);
+                  pauseOnIndex(insertIdx);
+                  positionPauseButton();
+                },
+                () => {
+                  console.warn(`Requested artist artwork not found: ${item.username}`);
+                  if (!isPaused) startArtworkLoop();
+                },
+              );
+            });
+            return; // Don't start the loop yet — wait for artist artwork to load
+          }
+        }
+
         if (!isPaused) startArtworkLoop();
       }
 
