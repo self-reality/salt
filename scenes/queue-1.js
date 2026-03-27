@@ -16,7 +16,7 @@ import {
 // ---------------------------------------------------------------------------
 const ARTWORK_BASE_PATH = 'artworks/';
 const INTERVAL_MS = 100;
-const CAMERA_POSITION = [0, 1, 15];
+const CAMERA_POSITION = [-10, 4, 11];
 const CAMERA_FOV = 45;
 const BACKGROUND_COLOR = 0xffffff;
 const TONE_MAPPING_EXPOSURE = 1.01;
