@@ -98,14 +98,13 @@ export async function runQueue1Scene() {
   controls.minDistance = 1;
   controls.maxDistance = 20;
 
-  // Clamp closest zoom so the model can't grow beyond the agreed maximum.
-  // Assumption: projected on-screen size scales ~ inversely with camera distance.
-  // Current scale is 30% at the initial camera position; we cap at 50%.
+  // Soft zoom limits for the rubber-band effect.
+  // Derived from constants + initial camera distance (not from can geometry).
+  let softMinDistance, softMaxDistance;
   {
     const currentScale = 0.3;
     const maxScale = 0.5;
 
-    // Ensure distance is measured from the orbit target.
     controls.target.set(0, 0, 0);
     const currentDistance = camera.position.distanceTo(controls.target);
     const rawMinDistance = currentDistance * (currentScale / maxScale);
@@ -113,13 +112,33 @@ export async function runQueue1Scene() {
     let minDistance = rawMinDistance;
     if (!Number.isFinite(minDistance) || minDistance <= 0) minDistance = 1;
 
-    // Guardrail: keep minDistance slightly below maxDistance.
     const maxDistance = controls.maxDistance;
     if (!Number.isFinite(maxDistance) || maxDistance <= 0) controls.maxDistance = 20;
     if (minDistance >= controls.maxDistance) minDistance = controls.maxDistance - 0.001;
 
-    controls.minDistance = minDistance;
+    softMinDistance = minDistance;
+    softMaxDistance = controls.maxDistance;
+
+    // Widen hard limits so OrbitControls allows overshoot into the rubber-band zone.
+    controls.minDistance = softMinDistance * 0.4;
+    controls.maxDistance = softMaxDistance * 1.5;
   }
+
+  // --- Rubber-band scroll tracking ---
+  let userScrolling = false;
+  let _scrollEndTimer = null;
+  const SCROLL_END_DELAY = 150;
+
+  function _markScrolling() {
+    userScrolling = true;
+    clearTimeout(_scrollEndTimer);
+    _scrollEndTimer = setTimeout(() => { userScrolling = false; }, SCROLL_END_DELAY);
+  }
+
+  renderer.domElement.addEventListener('wheel', _markScrolling, { passive: true });
+  renderer.domElement.addEventListener('touchmove', (e) => {
+    if (e.touches.length >= 2) _markScrolling();
+  }, { passive: true });
 
   // --- Lighting ---
   scene.add(new THREE.AmbientLight(0xffffff, AMBIENT_INTENSITY));
@@ -425,10 +444,32 @@ export async function runQueue1Scene() {
     },
   });
 
-  // Render loop
+  // Render loop (with rubber-band zoom correction)
+  const clock = new THREE.Clock();
+  const _rbOffset = new THREE.Vector3();
+
   function animate() {
     requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.1);
     controls.update();
+
+    _rbOffset.subVectors(camera.position, controls.target);
+    const dist = _rbOffset.length();
+
+    let clampTarget = -1;
+    if (dist < softMinDistance) clampTarget = softMinDistance;
+    else if (dist > softMaxDistance) clampTarget = softMaxDistance;
+
+    if (clampTarget >= 0) {
+      const rate = userScrolling ? 4 : 12;
+      const t = 1 - Math.exp(-rate * dt);
+      let newDist = dist + (clampTarget - dist) * t;
+      if (Math.abs(newDist - clampTarget) < 0.001) newDist = clampTarget;
+
+      _rbOffset.normalize().multiplyScalar(newDist);
+      camera.position.copy(controls.target).add(_rbOffset);
+    }
+
     composer.render();
   }
   animate();
