@@ -360,6 +360,54 @@ export async function runQueue1Scene() {
       pauseButton.setAttribute('aria-label', 'Pause artwork cycling');
       document.body.appendChild(pauseButton);
 
+      // Search UI
+      const searchContainer = document.createElement('div');
+      Object.assign(searchContainer.style, {
+        position: 'fixed',
+        bottom: '100px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        gap: '4px',
+        zIndex: '1002',
+        pointerEvents: 'auto',
+      });
+
+      const searchInput = document.createElement('input');
+      searchInput.type = 'text';
+      searchInput.placeholder = 'Artist name…';
+      Object.assign(searchInput.style, {
+        background: 'rgba(0,0,0,0.85)',
+        color: '#fff',
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        fontSize: '13px',
+        lineHeight: '1.5',
+        padding: '6px 10px',
+        borderRadius: '8px',
+        border: '1px solid rgba(255,255,255,0.2)',
+        outline: 'none',
+        width: '180px',
+      });
+
+      const searchButton = document.createElement('button');
+      searchButton.type = 'button';
+      searchButton.textContent = 'Search';
+      Object.assign(searchButton.style, {
+        background: 'rgba(0,0,0,0.85)',
+        color: '#fff',
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        fontSize: '13px',
+        lineHeight: '1.5',
+        padding: '6px 14px',
+        borderRadius: '8px',
+        border: 'none',
+        cursor: 'pointer',
+      });
+
+      searchContainer.appendChild(searchInput);
+      searchContainer.appendChild(searchButton);
+      document.body.appendChild(searchContainer);
+
       let isPaused = false;
       let artworkIntervalId = null;
       let validItems = null;
@@ -394,6 +442,10 @@ export async function runQueue1Scene() {
         const gapPx = 6;
         const newBottom = overlayBottomFromViewportBottom - (buttonRect.height + gapPx);
         pauseButton.style.bottom = `${Math.max(8, newBottom)}px`;
+
+        const pauseBottom = parseFloat(pauseButton.style.bottom);
+        const searchBottom = pauseBottom - searchContainer.getBoundingClientRect().height - gapPx;
+        searchContainer.style.bottom = `${Math.max(8, searchBottom)}px`;
       }
 
       pauseButton.addEventListener('click', () => {
@@ -405,6 +457,57 @@ export async function runQueue1Scene() {
         );
         if (isPaused) stopArtworkLoop();
         else startArtworkLoop();
+      });
+
+      let searchBusy = false;
+      function performSearch() {
+        const query = searchInput.value.trim();
+        if (!query || searchBusy) return;
+        const match = findArtistInDataset(fullDataset, query);
+        if (!match) {
+          searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
+          searchInput.placeholder = 'Not found';
+          searchInput.value = '';
+          setTimeout(() => {
+            searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
+            searchInput.placeholder = 'Artist name…';
+          }, 1500);
+          return;
+        }
+        searchBusy = true;
+        searchButton.textContent = '…';
+        buildEntryFromDatasetItem(match).then((item) => {
+          if (!item) { searchBusy = false; searchButton.textContent = 'Search'; return; }
+          preloadLocalArtworkWithCandidates(
+            item,
+            (img) => {
+              const ar = item.height / item.width;
+              const insertIdx = insertIndexInWave(validItems, ar);
+              validItems.splice(insertIdx, 0, img);
+              pauseOnIndex(insertIdx);
+              positionPauseButton();
+              searchInput.value = '';
+              searchBusy = false;
+              searchButton.textContent = 'Search';
+            },
+            () => {
+              searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
+              searchInput.placeholder = 'Artwork not found';
+              searchInput.value = '';
+              setTimeout(() => {
+                searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
+                searchInput.placeholder = 'Artist name…';
+              }, 1500);
+              searchBusy = false;
+              searchButton.textContent = 'Search';
+            },
+          );
+        });
+      }
+
+      searchButton.addEventListener('click', performSearch);
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') performSearch();
       });
 
       function pauseOnIndex(index) {
