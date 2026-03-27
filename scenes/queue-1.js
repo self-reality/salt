@@ -383,12 +383,13 @@ export async function runQueue1Scene() {
 
       let isPaused = false;
       let artworkIntervalId = null;
-      let validItems = null;
+      let validItems = [];
       let seqIndex = 0;
 
       function applyArtworkByIndex(index) {
         if (!validItems || validItems.length === 0) return;
-        const item = validItems[index];
+        const safeIndex = ((index % validItems.length) + validItems.length) % validItems.length;
+        const item = validItems[safeIndex];
         setArtworkFromImage(item, applyStretchY);
         updateOverlay(item._item);
       }
@@ -483,6 +484,7 @@ export async function runQueue1Scene() {
       });
 
       function pauseOnIndex(index) {
+        if (!validItems || validItems.length === 0) return;
         seqIndex = index;
         applyArtworkByIndex(seqIndex);
         isPaused = true;
@@ -511,45 +513,66 @@ export async function runQueue1Scene() {
         return { username, name, width, height, filename };
       }
 
-      function onAllPreloaded() {
-        // Filter out failed loads
-        validItems = [];
-        for (let i = 0; i < manifest.length; i++) {
-          if (preloaded[i]) validItems.push(preloaded[i]);
-        }
-        if (validItems.length === 0) return;
+      let hasStartedArtwork = false;
+      let requestedArtistHandled = false;
+
+      function maybeStartFromFirstLoadedArtwork() {
+        if (hasStartedArtwork) return;
+        if (!validItems || validItems.length === 0) return;
 
         stopArtworkLoop();
         seqIndex = 0;
         applyArtworkByIndex(seqIndex);
-
         positionPauseButton();
-
-        if (requestedArtist) {
-          const match = findArtistInDataset(fullDataset, requestedArtist);
-          if (match) {
-            const item = buildEntryFromDatasetItem(match);
-            if (!item) { if (!isPaused) startArtworkLoop(); return; }
-            preloadLocalArtwork(
-              item,
-              (img) => {
-                const ar = item.height / item.width;
-                const insertIdx = insertIndexInWave(validItems, ar);
-                validItems.splice(insertIdx, 0, img);
-                pauseOnIndex(insertIdx);
-                positionPauseButton();
-              },
-              () => {
-                console.warn(`Requested artist artwork not found: ${item.username}`);
-                if (!isPaused) startArtworkLoop();
-              },
-            );
-            return; // Don't start the loop yet — wait for artist artwork to load
-          }
-        }
+        hasStartedArtwork = true;
 
         if (!isPaused) startArtworkLoop();
       }
+
+      function maybeHandleRequestedArtist() {
+        if (requestedArtistHandled || !requestedArtist) return;
+        requestedArtistHandled = true;
+
+        const match = findArtistInDataset(fullDataset, requestedArtist);
+        if (!match) return;
+
+        const item = buildEntryFromDatasetItem(match);
+        if (!item) return;
+
+        preloadLocalArtwork(
+          item,
+          (img) => {
+            const ar = item.height / item.width;
+            const insertIdx = insertIndexInWave(validItems, ar);
+            validItems.splice(insertIdx, 0, img);
+            pauseOnIndex(insertIdx);
+            positionPauseButton();
+          },
+          () => {
+            console.warn(`Requested artist artwork not found: ${item.username}`);
+          },
+        );
+      }
+
+      function insertManifestImageInOrder(img, manifestIndex) {
+        img._manifestIndex = manifestIndex;
+
+        let insertIdx = validItems.length;
+        for (let i = 0; i < validItems.length; i++) {
+          const existingManifestIndex = validItems[i]._manifestIndex;
+          if (
+            Number.isInteger(existingManifestIndex)
+            && existingManifestIndex > manifestIndex
+          ) {
+            insertIdx = i;
+            break;
+          }
+        }
+
+        validItems.splice(insertIdx, 0, img);
+      }
+
+      maybeHandleRequestedArtist();
 
       function preloadLocalArtwork(item, onSuccess, onFailure) {
         const img = new Image();
@@ -564,16 +587,24 @@ export async function runQueue1Scene() {
         preloadLocalArtwork(
           item,
           (img) => {
-            preloaded[i] = img;
+            if (!preloaded[i]) {
+              preloaded[i] = img;
+              insertManifestImageInOrder(img, i);
+              maybeStartFromFirstLoadedArtwork();
+            }
             loadedCount++;
-            if (loadedCount === manifest.length) onAllPreloaded();
+            if (loadedCount === manifest.length && validItems.length === 0) {
+              console.warn('No artwork images loaded successfully from manifest.');
+            }
           },
           (filename) => {
             console.warn(
               `Artwork not found in /artworks: ${filename} (${item.username} — "${item.name}")`,
             );
             loadedCount++;
-            if (loadedCount === manifest.length) onAllPreloaded();
+            if (loadedCount === manifest.length && validItems.length === 0) {
+              console.warn('No artwork images loaded successfully from manifest.');
+            }
           },
         );
       }
