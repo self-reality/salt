@@ -98,6 +98,29 @@ export async function runQueue1Scene() {
   controls.minDistance = 1;
   controls.maxDistance = 20;
 
+  // Clamp closest zoom so the model can't grow beyond the agreed maximum.
+  // Assumption: projected on-screen size scales ~ inversely with camera distance.
+  // Current scale is 30% at the initial camera position; we cap at 50%.
+  {
+    const currentScale = 0.3;
+    const maxScale = 0.5;
+
+    // Ensure distance is measured from the orbit target.
+    controls.target.set(0, 0, 0);
+    const currentDistance = camera.position.distanceTo(controls.target);
+    const rawMinDistance = currentDistance * (currentScale / maxScale);
+
+    let minDistance = rawMinDistance;
+    if (!Number.isFinite(minDistance) || minDistance <= 0) minDistance = 1;
+
+    // Guardrail: keep minDistance slightly below maxDistance.
+    const maxDistance = controls.maxDistance;
+    if (!Number.isFinite(maxDistance) || maxDistance <= 0) controls.maxDistance = 20;
+    if (minDistance >= controls.maxDistance) minDistance = controls.maxDistance - 0.001;
+
+    controls.minDistance = minDistance;
+  }
+
   // --- Lighting ---
   scene.add(new THREE.AmbientLight(0xffffff, AMBIENT_INTENSITY));
 
