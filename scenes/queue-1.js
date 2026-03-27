@@ -59,13 +59,14 @@ export async function runQueue1Scene() {
   );
 
   // --- Renderer ---
+  const container = document.getElementById('scene-container');
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  document.body.appendChild(renderer.domElement);
+  container.appendChild(renderer.domElement);
 
   // --- Scene ---
   const scene = new THREE.Scene();
@@ -84,7 +85,7 @@ export async function runQueue1Scene() {
   // --- Camera ---
   const camera = new THREE.PerspectiveCamera(
     CAMERA_FOV,
-    window.innerWidth / window.innerHeight,
+    container.clientWidth / container.clientHeight,
     0.1,
     1000,
   );
@@ -94,51 +95,39 @@ export async function runQueue1Scene() {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
+  controls.enablePan = false;
+  controls.enableZoom = false;
   controls.autoRotate = false;
   controls.minDistance = 1;
   controls.maxDistance = 20;
 
-  // Soft zoom limits for the rubber-band effect.
-  // Derived from constants + initial camera distance (not from can geometry).
-  let softMinDistance, softMaxDistance;
-  {
-    const currentScale = 0.3;
-    const maxScale = 0.5;
+  controls.target.set(0, 0, 0);
 
-    controls.target.set(0, 0, 0);
-    const currentDistance = camera.position.distanceTo(controls.target);
-    const rawMinDistance = currentDistance * (currentScale / maxScale);
+  // --- Hover-to-zoom: raycast against the model to toggle zoom on/off ---
+  const _raycaster = new THREE.Raycaster();
+  const _pointer = new THREE.Vector2();
+  let _canGroupRef = null;
 
-    let minDistance = rawMinDistance;
-    if (!Number.isFinite(minDistance) || minDistance <= 0) minDistance = 1;
-
-    const maxDistance = controls.maxDistance;
-    if (!Number.isFinite(maxDistance) || maxDistance <= 0) controls.maxDistance = 20;
-    if (minDistance >= controls.maxDistance) minDistance = controls.maxDistance - 0.001;
-
-    softMinDistance = minDistance;
-    softMaxDistance = controls.maxDistance;
-
-    // Widen hard limits so OrbitControls allows overshoot into the rubber-band zone.
-    controls.minDistance = softMinDistance * 0.4;
-    controls.maxDistance = softMaxDistance * 1.5;
+  function updatePointer(e) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    _pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    _pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   }
 
-  // --- Rubber-band scroll tracking ---
-  let userScrolling = false;
-  let _scrollEndTimer = null;
-  const SCROLL_END_DELAY = 150;
-
-  function _markScrolling() {
-    userScrolling = true;
-    clearTimeout(_scrollEndTimer);
-    _scrollEndTimer = setTimeout(() => { userScrolling = false; }, SCROLL_END_DELAY);
+  function isPointerOverModel() {
+    if (!_canGroupRef) return false;
+    _raycaster.setFromCamera(_pointer, camera);
+    return _raycaster.intersectObject(_canGroupRef, true).length > 0;
   }
 
-  renderer.domElement.addEventListener('wheel', _markScrolling, { passive: true });
-  renderer.domElement.addEventListener('touchmove', (e) => {
-    if (e.touches.length >= 2) _markScrolling();
-  }, { passive: true });
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    updatePointer(e);
+    controls.enableZoom = isPointerOverModel();
+  });
+
+  renderer.domElement.addEventListener('pointerleave', () => {
+    controls.enableZoom = false;
+  });
 
   // --- Lighting ---
   scene.add(new THREE.AmbientLight(0xffffff, AMBIENT_INTENSITY));
@@ -179,6 +168,7 @@ export async function runQueue1Scene() {
     onLoaded({ canGroup, material, setArtworkFromImage, width, height, depth }) {
       material.envMapIntensity = ENV_MAP_INTENSITY;
       scene.add(canGroup);
+      _canGroupRef = canGroup;
       controls.target.set(0, 0, 0);
       controls.update();
 
@@ -444,45 +434,25 @@ export async function runQueue1Scene() {
     },
   });
 
-  // Render loop (with rubber-band zoom correction)
-  const clock = new THREE.Clock();
-  const _rbOffset = new THREE.Vector3();
-
+  // Render loop
   function animate() {
     requestAnimationFrame(animate);
-    const dt = Math.min(clock.getDelta(), 0.1);
     controls.update();
-
-    _rbOffset.subVectors(camera.position, controls.target);
-    const dist = _rbOffset.length();
-
-    let clampTarget = -1;
-    if (dist < softMinDistance) clampTarget = softMinDistance;
-    else if (dist > softMaxDistance) clampTarget = softMaxDistance;
-
-    if (clampTarget >= 0) {
-      const rate = userScrolling ? 4 : 12;
-      const t = 1 - Math.exp(-rate * dt);
-      let newDist = dist + (clampTarget - dist) * t;
-      if (Math.abs(newDist - clampTarget) < 0.001) newDist = clampTarget;
-
-      _rbOffset.normalize().multiplyScalar(newDist);
-      camera.position.copy(controls.target).add(_rbOffset);
-    }
-
     composer.render();
   }
   animate();
 
   // Resize
   window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    composer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(w, h);
+    composer.setSize(w, h);
     pixelArtPass.uniforms.resolution.value.set(
-      window.innerWidth * renderer.getPixelRatio(),
-      window.innerHeight * renderer.getPixelRatio(),
+      w * renderer.getPixelRatio(),
+      h * renderer.getPixelRatio(),
     );
   });
 }
