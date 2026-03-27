@@ -36,32 +36,6 @@ const TEXTURE_PATH = 'bennyrizzo - 1950s-spam/textures/';
 const DATASET_PATH = 'queue/most-expensive-artworks.json';
 const SAMPLE_SIZE = 50;
 
-function toSha1Hex(input) {
-  const bytes = new TextEncoder().encode(input);
-  return crypto.subtle.digest('SHA-1', bytes).then((buf) => {
-    const view = new Uint8Array(buf);
-    return Array.from(view, (b) => b.toString(16).padStart(2, '0')).join('');
-  });
-}
-
-function toSlug(value) {
-  return String(value || '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function extCandidatesFromMediaType(mediaType) {
-  const normalized = String(mediaType || '').toLowerCase();
-  if (normalized.includes('png')) return ['png', 'jpg', 'jpeg', 'webp'];
-  if (normalized.includes('jpeg') || normalized.includes('jpg')) return ['jpg', 'jpeg', 'png', 'webp'];
-  if (normalized.includes('webp')) return ['webp', 'jpg', 'jpeg', 'png'];
-  if (normalized.includes('gif')) return ['gif', 'png', 'jpg', 'jpeg'];
-  return ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-}
-
 async function buildRandomManifestFromDataset(dataset) {
   const shuffled = dataset.slice();
 
@@ -80,26 +54,25 @@ async function buildRandomManifestFromDataset(dataset) {
     const name = entry?.metadata?.name;
     const width = Number(entry?.metadata?.width);
     const height = Number(entry?.metadata?.height);
-    if (!username || !name || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    const filename = entry?.metadata?.localFilename;
+    if (
+      !username
+      || !name
+      || !filename
+      || !Number.isFinite(width)
+      || !Number.isFinite(height)
+      || width <= 0
+      || height <= 0
+    ) {
       continue;
     }
-
-    const usernameSlug = toSlug(username);
-    const nameSlug = toSlug(name);
-    if (!usernameSlug || !nameSlug) continue;
-
-    const sha1 = await toSha1Hex(username);
-    const hash8 = sha1.slice(0, 8);
-    const extCandidates = extCandidatesFromMediaType(entry?.metadata?.mediaType);
-    const filenameCandidates = extCandidates.map((ext) => `${usernameSlug}__${hash8}__${nameSlug}.${ext}`);
 
     result.push({
       username,
       name,
       width,
       height,
-      filename: filenameCandidates[0],
-      filenameCandidates,
+      filename,
     });
   }
 
@@ -476,33 +449,32 @@ export async function runQueue1Scene() {
         }
         searchBusy = true;
         searchButton.textContent = '…';
-        buildEntryFromDatasetItem(match).then((item) => {
-          if (!item) { searchBusy = false; searchButton.textContent = 'Search'; return; }
-          preloadLocalArtworkWithCandidates(
-            item,
-            (img) => {
-              const ar = item.height / item.width;
-              const insertIdx = insertIndexInWave(validItems, ar);
-              validItems.splice(insertIdx, 0, img);
-              pauseOnIndex(insertIdx);
-              positionPauseButton();
-              searchInput.value = '';
-              searchBusy = false;
-              searchButton.textContent = 'Search';
-            },
-            () => {
-              searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
-              searchInput.placeholder = 'Artwork not found';
-              searchInput.value = '';
-              setTimeout(() => {
-                searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
-                searchInput.placeholder = 'Artist name…';
-              }, 1500);
-              searchBusy = false;
-              searchButton.textContent = 'Search';
-            },
-          );
-        });
+        const item = buildEntryFromDatasetItem(match);
+        if (!item) { searchBusy = false; searchButton.textContent = 'Search'; return; }
+        preloadLocalArtwork(
+          item,
+          (img) => {
+            const ar = item.height / item.width;
+            const insertIdx = insertIndexInWave(validItems, ar);
+            validItems.splice(insertIdx, 0, img);
+            pauseOnIndex(insertIdx);
+            positionPauseButton();
+            searchInput.value = '';
+            searchBusy = false;
+            searchButton.textContent = 'Search';
+          },
+          () => {
+            searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
+            searchInput.placeholder = 'Artwork not found';
+            searchInput.value = '';
+            setTimeout(() => {
+              searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
+              searchInput.placeholder = 'Artist name…';
+            }, 1500);
+            searchBusy = false;
+            searchButton.textContent = 'Search';
+          },
+        );
       }
 
       searchButton.addEventListener('click', performSearch);
@@ -519,23 +491,24 @@ export async function runQueue1Scene() {
         pauseButton.setAttribute('aria-label', 'Play artwork cycling');
       }
 
-      async function buildEntryFromDatasetItem(entry) {
+      function buildEntryFromDatasetItem(entry) {
         const username = entry?.creator?.username;
         const name = entry?.metadata?.name;
         const width = Number(entry?.metadata?.width);
         const height = Number(entry?.metadata?.height);
-        if (!username || !name || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+        const filename = entry?.metadata?.localFilename;
+        if (
+          !username
+          || !name
+          || !filename
+          || !Number.isFinite(width)
+          || !Number.isFinite(height)
+          || width <= 0
+          || height <= 0
+        ) {
           return null;
         }
-        const usernameSlug = toSlug(username);
-        const nameSlug = toSlug(name);
-        if (!usernameSlug || !nameSlug) return null;
-
-        const sha1 = await toSha1Hex(username);
-        const hash8 = sha1.slice(0, 8);
-        const extCandidates = extCandidatesFromMediaType(entry?.metadata?.mediaType);
-        const filenameCandidates = extCandidates.map((ext) => `${usernameSlug}__${hash8}__${nameSlug}.${ext}`);
-        return { username, name, width, height, filename: filenameCandidates[0], filenameCandidates };
+        return { username, name, width, height, filename };
       }
 
       function onAllPreloaded() {
@@ -555,23 +528,22 @@ export async function runQueue1Scene() {
         if (requestedArtist) {
           const match = findArtistInDataset(fullDataset, requestedArtist);
           if (match) {
-            buildEntryFromDatasetItem(match).then((item) => {
-              if (!item) { if (!isPaused) startArtworkLoop(); return; }
-              preloadLocalArtworkWithCandidates(
-                item,
-                (img) => {
-                  const ar = item.height / item.width;
-                  const insertIdx = insertIndexInWave(validItems, ar);
-                  validItems.splice(insertIdx, 0, img);
-                  pauseOnIndex(insertIdx);
-                  positionPauseButton();
-                },
-                () => {
-                  console.warn(`Requested artist artwork not found: ${item.username}`);
-                  if (!isPaused) startArtworkLoop();
-                },
-              );
-            });
+            const item = buildEntryFromDatasetItem(match);
+            if (!item) { if (!isPaused) startArtworkLoop(); return; }
+            preloadLocalArtwork(
+              item,
+              (img) => {
+                const ar = item.height / item.width;
+                const insertIdx = insertIndexInWave(validItems, ar);
+                validItems.splice(insertIdx, 0, img);
+                pauseOnIndex(insertIdx);
+                positionPauseButton();
+              },
+              () => {
+                console.warn(`Requested artist artwork not found: ${item.username}`);
+                if (!isPaused) startArtworkLoop();
+              },
+            );
             return; // Don't start the loop yet — wait for artist artwork to load
           }
         }
@@ -579,43 +551,26 @@ export async function runQueue1Scene() {
         if (!isPaused) startArtworkLoop();
       }
 
-      function preloadLocalArtworkWithCandidates(item, onSuccess, onFailure) {
-        const candidates = Array.isArray(item.filenameCandidates) && item.filenameCandidates.length > 0
-          ? item.filenameCandidates
-          : [item.filename];
-        let candidateIndex = 0;
+      function preloadLocalArtwork(item, onSuccess, onFailure) {
         const img = new Image();
         img._item = item;
-
-        function tryNext() {
-          if (candidateIndex >= candidates.length) {
-            onFailure(candidates);
-            return;
-          }
-          const filename = candidates[candidateIndex++];
-          img.src = ARTWORK_BASE_PATH + filename;
-        }
-
-        img.onload = () => {
-          item.filename = candidates[candidateIndex - 1] || item.filename;
-          onSuccess(img);
-        };
-        img.onerror = tryNext;
-        tryNext();
+        img.onload = () => onSuccess(img);
+        img.onerror = () => onFailure(item.filename);
+        img.src = ARTWORK_BASE_PATH + item.filename;
       }
 
       for (let i = 0; i < manifest.length; i++) {
         const item = manifest[i];
-        preloadLocalArtworkWithCandidates(
+        preloadLocalArtwork(
           item,
           (img) => {
             preloaded[i] = img;
             loadedCount++;
             if (loadedCount === manifest.length) onAllPreloaded();
           },
-          (triedCandidates) => {
+          (filename) => {
             console.warn(
-              `Artwork not found in /artworks: ${triedCandidates.join(', ')} (${item.username} — "${item.name}")`,
+              `Artwork not found in /artworks: ${filename} (${item.username} — "${item.name}")`,
             );
             loadedCount++;
             if (loadedCount === manifest.length) onAllPreloaded();
