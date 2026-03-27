@@ -3,6 +3,13 @@ import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadCan } from '../lib/can.js';
 import { setupPixelArtPass } from '../lib/post-processing.js';
+import {
+  buildRandomManifestFromDataset,
+  buildEntryFromDatasetItem,
+  findArtistInDataset,
+  waveSortManifest,
+  insertIndexInWave,
+} from '../lib/dataset.js';
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -36,124 +43,22 @@ const TEXTURE_PATH = 'bennyrizzo - 1950s-spam/textures/';
 const DATASET_PATH = 'queue/most-expensive-artworks.json';
 const SAMPLE_SIZE = 50;
 
-async function buildRandomManifestFromDataset(dataset) {
-  const shuffled = dataset.slice();
-
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = shuffled[i];
-    shuffled[i] = shuffled[j];
-    shuffled[j] = tmp;
-  }
-
-  const result = [];
-  for (const entry of shuffled) {
-    if (result.length >= SAMPLE_SIZE) break;
-
-    const username = entry?.creator?.username;
-    const name = entry?.metadata?.name;
-    const width = Number(entry?.metadata?.width);
-    const height = Number(entry?.metadata?.height);
-    const filename = entry?.metadata?.localFilename;
-    if (
-      !username
-      || !name
-      || !filename
-      || !Number.isFinite(width)
-      || !Number.isFinite(height)
-      || width <= 0
-      || height <= 0
-    ) {
-      continue;
-    }
-
-    result.push({
-      username,
-      name,
-      width,
-      height,
-      filename,
-    });
-  }
-
-  return result;
-}
-
-function findArtistInDataset(dataset, query) {
-  const q = String(query || '').toLowerCase().trim();
-  if (!q) return null;
-  return (
-    dataset.find((e) => String(e?.creator?.username || '').toLowerCase() === q) ||
-    dataset.find((e) => String(e?.creator?.fullName || '').toLowerCase() === q) ||
-    dataset.find((e) => String(e?.creator?.username || '').toLowerCase().includes(q)) ||
-    dataset.find((e) => String(e?.creator?.fullName || '').toLowerCase().includes(q)) ||
-    null
-  );
-}
-
-function insertIndexInWave(validItems, aspectRatio) {
-  // validItems is wave-sorted: descending aspect ratio first half, ascending second half.
-  // Find where this aspect ratio belongs to maintain the wave order.
-  const n = validItems.length;
-  if (n === 0) return 0;
-
-  // Detect the split point (where descending half ends and ascending half begins).
-  let splitIndex = n;
-  for (let i = 1; i < n; i++) {
-    const prevAR = validItems[i - 1]._item.height / validItems[i - 1]._item.width;
-    const curAR = validItems[i]._item.height / validItems[i]._item.width;
-    if (curAR > prevAR) {
-      splitIndex = i;
-      break;
-    }
-  }
-
-  // Try descending half first (indices 0..splitIndex-1), tall→wide
-  for (let i = 0; i < splitIndex; i++) {
-    const ar = validItems[i]._item.height / validItems[i]._item.width;
-    if (aspectRatio >= ar) return i;
-  }
-
-  // Then ascending half (indices splitIndex..n-1), wide→tall
-  for (let i = splitIndex; i < n; i++) {
-    const ar = validItems[i]._item.height / validItems[i]._item.width;
-    if (aspectRatio <= ar) return i;
-  }
-
-  return n;
-}
-
 // ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
 export async function runQueue1Scene() {
-  // This scene shouldn't show the global controls UI.
   const controlsPanel = document.getElementById('controls-panel');
   if (controlsPanel) controlsPanel.classList.add('hidden');
 
-  // Read ?artist= query parameter
   const requestedArtist = new URLSearchParams(location.search).get('artist');
 
-  // Build a random local manifest from the expensive-artworks dataset.
+  // Build manifest
   const fullDataset = await fetch(DATASET_PATH).then((r) => r.json());
-  const manifest = await buildRandomManifestFromDataset(fullDataset);
+  const manifest = waveSortManifest(
+    buildRandomManifestFromDataset(fullDataset, SAMPLE_SIZE),
+  );
 
-  // Sort by aspect ratio descending (tallest first)
-  manifest.sort((a, b) => (b.height / b.width) - (a.height / a.width));
-
-  // Arrange as wave: tallest → widest → tallest (seamless loop)
-  // Even-indexed sorted items descend (tall→wide), odd-indexed reversed ascend (wide→tall)
-  const sorted = manifest.slice();
-  const descHalf = [];
-  const ascHalf = [];
-  for (let i = 0; i < sorted.length; i++) {
-    (i % 2 === 0 ? descHalf : ascHalf).push(sorted[i]);
-  }
-  ascHalf.reverse();
-  manifest.length = 0;
-  manifest.push(...descHalf, ...ascHalf);
-
-  // Renderer
+  // --- Renderer ---
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
@@ -162,11 +67,11 @@ export async function runQueue1Scene() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   document.body.appendChild(renderer.domElement);
 
-  // Scene
+  // --- Scene ---
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(BACKGROUND_COLOR);
 
-  // Environment map
+  // --- Environment map ---
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
   pmremGenerator.compileEquirectangularShader();
   new RGBELoader().load(ENV_MAP_URL, (hdrEquirect) => {
@@ -176,7 +81,7 @@ export async function runQueue1Scene() {
     pmremGenerator.dispose();
   });
 
-  // Camera
+  // --- Camera ---
   const camera = new THREE.PerspectiveCamera(
     CAMERA_FOV,
     window.innerWidth / window.innerHeight,
@@ -185,7 +90,7 @@ export async function runQueue1Scene() {
   );
   camera.position.set(...CAMERA_POSITION);
 
-  // Orbit controls (mouse rotation only, no auto-rotate)
+  // --- Controls ---
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -193,9 +98,8 @@ export async function runQueue1Scene() {
   controls.minDistance = 1;
   controls.maxDistance = 20;
 
-  // Lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, AMBIENT_INTENSITY);
-  scene.add(ambientLight);
+  // --- Lighting ---
+  scene.add(new THREE.AmbientLight(0xffffff, AMBIENT_INTENSITY));
 
   const hemiLight = new THREE.HemisphereLight(HEMI_SKY, HEMI_GROUND, HEMI_INTENSITY);
   hemiLight.position.set(0, 10, 0);
@@ -213,29 +117,37 @@ export async function runQueue1Scene() {
   dirLight3.position.set(...RIM_LIGHT_POSITION);
   scene.add(dirLight3);
 
-  // Post-processing (hardcoded defaults from test scene tuning)
+  // --- Post-processing ---
   const { composer, pixelArtPass } = setupPixelArtPass(renderer, scene, camera);
   pixelArtPass.uniforms.pixelSize.value = 4;
   pixelArtPass.uniforms.colorLevels.value = 8;
 
-  // Load can
+  // --- DOM references ---
+  const queueUI = document.getElementById('queue-ui');
+  const overlay = document.getElementById('queue-overlay');
+  const pauseButton = document.getElementById('queue-pause');
+  const searchInput = document.getElementById('queue-search-input');
+  const searchButton = document.getElementById('queue-search-btn');
+  const searchContainer = document.getElementById('queue-search');
+
+  // --- Load can ---
   loadCan({
     modelPath: MODEL_PATH,
     texturePath: TEXTURE_PATH,
-    onLoaded({ canGroup, material, setArtworkFromUrl, setArtworkFromImage, width, height, depth }) {
+    onLoaded({ canGroup, material, setArtworkFromImage, width, height, depth }) {
       material.envMapIntensity = ENV_MAP_INTENSITY;
       scene.add(canGroup);
-
       controls.target.set(0, 0, 0);
       controls.update();
 
       const loadingEl = document.getElementById('loading');
       if (loadingEl) loadingEl.classList.add('hidden');
 
-      // Stretch state (same logic as controls.js but inline)
-      const originalWidth = width;
+      // Show queue UI
+      if (queueUI) queueUI.classList.add('visible');
+
+      // Stretch state
       const originalHeight = height;
-      const originalDepth = depth;
 
       function applyStretchY(stretchFactor) {
         if (!Number.isFinite(stretchFactor) || stretchFactor <= 0) return;
@@ -243,20 +155,13 @@ export async function runQueue1Scene() {
         const targetHeight = originalHeight * stretchFactor;
         const deltaY = (targetHeight - originalHeight) / 2;
 
-        let minX = Infinity, maxX = -Infinity;
         let minY = Infinity, maxY = -Infinity;
-        let minZ = Infinity, maxZ = -Infinity;
-
         canGroup.traverse((child) => {
           if (!child.isMesh || !child.userData.restPositions) return;
           const rest = child.userData.restPositions;
-          for (let i = 0; i < rest.length; i += 3) {
-            minX = Math.min(minX, rest[i]);
-            maxX = Math.max(maxX, rest[i]);
-            minY = Math.min(minY, rest[i + 1]);
-            maxY = Math.max(maxY, rest[i + 1]);
-            minZ = Math.min(minZ, rest[i + 2]);
-            maxZ = Math.max(maxZ, rest[i + 2]);
+          for (let i = 1; i < rest.length; i += 3) {
+            minY = Math.min(minY, rest[i]);
+            maxY = Math.max(maxY, rest[i]);
           }
         });
 
@@ -278,116 +183,22 @@ export async function runQueue1Scene() {
         });
       }
 
-      // Preload all artwork images into memory, then start the loop
+      // Artwork cycling state
       const preloaded = new Array(manifest.length);
       let loadedCount = 0;
-
-      // Text overlay
-      const overlay = document.createElement('div');
-      Object.assign(overlay.style, {
-        position: 'fixed',
-        bottom: '166px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: 'rgba(0,0,0,0.85)',
-        color: '#fff',
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        fontSize: '13px',
-        lineHeight: '1.5',
-        padding: '8px 16px',
-        borderRadius: '8px',
-        textAlign: 'center',
-        pointerEvents: 'none',
-        whiteSpace: 'nowrap',
-        zIndex: '1000',
-      });
-      document.body.appendChild(overlay);
-
-      function updateOverlay(item) {
-        overlay.innerHTML = `${item.username}<br>${item.name}`;
-      }
-
-      // Pause button (placed below the artist/work overlay text).
-      // The overlay itself stays `pointerEvents: none` so OrbitControls drag remains unaffected.
-      const pauseButton = document.createElement('button');
-      pauseButton.type = 'button';
-      pauseButton.textContent = 'Pause';
-      Object.assign(pauseButton.style, {
-        position: 'fixed',
-        bottom: '140px', // Repositioned once overlay has its first content.
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: 'rgba(0,0,0,0.85)',
-        color: '#fff',
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        fontSize: '13px',
-        lineHeight: '1.5',
-        padding: '6px 14px',
-        borderRadius: '8px',
-        border: 'none',
-        cursor: 'pointer',
-        pointerEvents: 'auto',
-        whiteSpace: 'nowrap',
-        zIndex: '1001',
-      });
-      pauseButton.setAttribute('aria-label', 'Pause artwork cycling');
-      document.body.appendChild(pauseButton);
-
-      // Search UI
-      const searchContainer = document.createElement('div');
-      Object.assign(searchContainer.style, {
-        position: 'fixed',
-        bottom: '100px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        display: 'flex',
-        gap: '4px',
-        zIndex: '1002',
-        pointerEvents: 'auto',
-      });
-
-      const searchInput = document.createElement('input');
-      searchInput.type = 'text';
-      searchInput.placeholder = 'Artist name…';
-      Object.assign(searchInput.style, {
-        background: 'rgba(0,0,0,0.85)',
-        color: '#fff',
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        fontSize: '13px',
-        lineHeight: '1.5',
-        padding: '6px 10px',
-        borderRadius: '8px',
-        border: '1px solid rgba(255,255,255,0.2)',
-        outline: 'none',
-        width: '180px',
-      });
-
-      const searchButton = document.createElement('button');
-      searchButton.type = 'button';
-      searchButton.textContent = 'Search';
-      Object.assign(searchButton.style, {
-        background: 'rgba(0,0,0,0.85)',
-        color: '#fff',
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        fontSize: '13px',
-        lineHeight: '1.5',
-        padding: '6px 14px',
-        borderRadius: '8px',
-        border: 'none',
-        cursor: 'pointer',
-      });
-
-      searchContainer.appendChild(searchInput);
-      searchContainer.appendChild(searchButton);
-      document.body.appendChild(searchContainer);
-
-      let isPaused = false;
-      let artworkIntervalId = null;
       let validItems = [];
       let seqIndex = 0;
+      let isPaused = false;
+      let artworkIntervalId = null;
+      let hasStartedArtwork = false;
+      let requestedArtistHandled = false;
+
+      function updateOverlay(item) {
+        if (overlay) overlay.innerHTML = `${item.username}<br>${item.name}`;
+      }
 
       function applyArtworkByIndex(index) {
-        if (!validItems || validItems.length === 0) return;
+        if (!validItems.length) return;
         const safeIndex = ((index % validItems.length) + validItems.length) % validItems.length;
         const item = validItems[safeIndex];
         setArtworkFromImage(item, applyStretchY);
@@ -395,8 +206,7 @@ export async function runQueue1Scene() {
       }
 
       function startArtworkLoop() {
-        if (!validItems || validItems.length === 0) return;
-        if (artworkIntervalId) return;
+        if (!validItems.length || artworkIntervalId) return;
         artworkIntervalId = window.setInterval(() => {
           seqIndex = (seqIndex + 1) % validItems.length;
           applyArtworkByIndex(seqIndex);
@@ -410,6 +220,7 @@ export async function runQueue1Scene() {
       }
 
       function positionPauseButton() {
+        if (!overlay || !pauseButton) return;
         const overlayRect = overlay.getBoundingClientRect();
         const buttonRect = pauseButton.getBoundingClientRect();
         const overlayBottomFromViewportBottom = window.innerHeight - overlayRect.bottom;
@@ -417,128 +228,113 @@ export async function runQueue1Scene() {
         const newBottom = overlayBottomFromViewportBottom - (buttonRect.height + gapPx);
         pauseButton.style.bottom = `${Math.max(8, newBottom)}px`;
 
-        const pauseBottom = parseFloat(pauseButton.style.bottom);
-        const searchBottom = pauseBottom - searchContainer.getBoundingClientRect().height - gapPx;
-        searchContainer.style.bottom = `${Math.max(8, searchBottom)}px`;
+        if (searchContainer) {
+          const pauseBottom = parseFloat(pauseButton.style.bottom);
+          const searchBottom = pauseBottom - searchContainer.getBoundingClientRect().height - gapPx;
+          searchContainer.style.bottom = `${Math.max(8, searchBottom)}px`;
+        }
       }
 
-      pauseButton.addEventListener('click', () => {
-        isPaused = !isPaused;
-        pauseButton.textContent = isPaused ? 'Play' : 'Pause';
-        pauseButton.setAttribute(
-          'aria-label',
-          isPaused ? 'Play artwork cycling' : 'Pause artwork cycling',
-        );
-        if (isPaused) stopArtworkLoop();
-        else startArtworkLoop();
-      });
+      function pauseOnIndex(index) {
+        if (!validItems.length) return;
+        seqIndex = index;
+        applyArtworkByIndex(seqIndex);
+        isPaused = true;
+        stopArtworkLoop();
+        if (pauseButton) {
+          pauseButton.textContent = 'Play';
+          pauseButton.setAttribute('aria-label', 'Play artwork cycling');
+        }
+      }
 
+      // Pause button
+      if (pauseButton) {
+        pauseButton.addEventListener('click', () => {
+          isPaused = !isPaused;
+          pauseButton.textContent = isPaused ? 'Play' : 'Pause';
+          pauseButton.setAttribute(
+            'aria-label',
+            isPaused ? 'Play artwork cycling' : 'Pause artwork cycling',
+          );
+          if (isPaused) stopArtworkLoop();
+          else startArtworkLoop();
+        });
+      }
+
+      // Search
       let searchBusy = false;
       function performSearch() {
-        const query = searchInput.value.trim();
+        const query = searchInput?.value.trim();
         if (!query || searchBusy) return;
         const match = findArtistInDataset(fullDataset, query);
         if (!match) {
-          searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
-          searchInput.placeholder = 'Not found';
-          searchInput.value = '';
-          setTimeout(() => {
-            searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
-            searchInput.placeholder = 'Artist name…';
-          }, 1500);
-          return;
-        }
-        searchBusy = true;
-        searchButton.textContent = '…';
-        const item = buildEntryFromDatasetItem(match);
-        if (!item) { searchBusy = false; searchButton.textContent = 'Search'; return; }
-        preloadLocalArtwork(
-          item,
-          (img) => {
-            const ar = item.height / item.width;
-            const insertIdx = insertIndexInWave(validItems, ar);
-            validItems.splice(insertIdx, 0, img);
-            pauseOnIndex(insertIdx);
-            positionPauseButton();
-            searchInput.value = '';
-            searchBusy = false;
-            searchButton.textContent = 'Search';
-          },
-          () => {
+          if (searchInput) {
             searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
-            searchInput.placeholder = 'Artwork not found';
+            searchInput.placeholder = 'Not found';
             searchInput.value = '';
             setTimeout(() => {
               searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
               searchInput.placeholder = 'Artist name…';
             }, 1500);
+          }
+          return;
+        }
+        searchBusy = true;
+        if (searchButton) searchButton.textContent = '…';
+        const item = buildEntryFromDatasetItem(match);
+        if (!item) { searchBusy = false; if (searchButton) searchButton.textContent = 'Search'; return; }
+        preloadLocalArtwork(
+          item,
+          (img) => {
+            const ar = item.height / item.width;
+            const insertIdx = insertIndexInWave(validItems, ar);
+            validItems.splice(insertIdx, 0, img);
+            pauseOnIndex(insertIdx);
+            positionPauseButton();
+            if (searchInput) searchInput.value = '';
             searchBusy = false;
-            searchButton.textContent = 'Search';
+            if (searchButton) searchButton.textContent = 'Search';
+          },
+          () => {
+            if (searchInput) {
+              searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
+              searchInput.placeholder = 'Artwork not found';
+              searchInput.value = '';
+              setTimeout(() => {
+                searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
+                searchInput.placeholder = 'Artist name…';
+              }, 1500);
+            }
+            searchBusy = false;
+            if (searchButton) searchButton.textContent = 'Search';
           },
         );
       }
 
-      searchButton.addEventListener('click', performSearch);
-      searchInput.addEventListener('keydown', (e) => {
+      if (searchButton) searchButton.addEventListener('click', performSearch);
+      if (searchInput) searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') performSearch();
       });
 
-      function pauseOnIndex(index) {
-        if (!validItems || validItems.length === 0) return;
-        seqIndex = index;
-        applyArtworkByIndex(seqIndex);
-        isPaused = true;
-        stopArtworkLoop();
-        pauseButton.textContent = 'Play';
-        pauseButton.setAttribute('aria-label', 'Play artwork cycling');
-      }
-
-      function buildEntryFromDatasetItem(entry) {
-        const username = entry?.creator?.username;
-        const name = entry?.metadata?.name;
-        const width = Number(entry?.metadata?.width);
-        const height = Number(entry?.metadata?.height);
-        const filename = entry?.metadata?.localFilename;
-        if (
-          !username
-          || !name
-          || !filename
-          || !Number.isFinite(width)
-          || !Number.isFinite(height)
-          || width <= 0
-          || height <= 0
-        ) {
-          return null;
-        }
-        return { username, name, width, height, filename };
-      }
-
-      let hasStartedArtwork = false;
-      let requestedArtistHandled = false;
-
+      // First-load start
       function maybeStartFromFirstLoadedArtwork() {
-        if (hasStartedArtwork) return;
-        if (!validItems || validItems.length === 0) return;
-
+        if (hasStartedArtwork || !validItems.length) return;
         stopArtworkLoop();
         seqIndex = 0;
         applyArtworkByIndex(seqIndex);
         positionPauseButton();
         hasStartedArtwork = true;
-
         if (!isPaused) startArtworkLoop();
       }
 
+      // Requested artist via ?artist= param
       function maybeHandleRequestedArtist() {
         if (requestedArtistHandled || !requestedArtist) return;
         requestedArtistHandled = true;
-
         const match = findArtistInDataset(fullDataset, requestedArtist);
         if (!match) return;
-
         const item = buildEntryFromDatasetItem(match);
         if (!item) return;
-
         preloadLocalArtwork(
           item,
           (img) => {
@@ -548,31 +344,22 @@ export async function runQueue1Scene() {
             pauseOnIndex(insertIdx);
             positionPauseButton();
           },
-          () => {
-            console.warn(`Requested artist artwork not found: ${item.username}`);
-          },
+          () => console.warn(`Requested artist artwork not found: ${item.username}`),
         );
       }
 
       function insertManifestImageInOrder(img, manifestIndex) {
         img._manifestIndex = manifestIndex;
-
         let insertIdx = validItems.length;
         for (let i = 0; i < validItems.length; i++) {
           const existingManifestIndex = validItems[i]._manifestIndex;
-          if (
-            Number.isInteger(existingManifestIndex)
-            && existingManifestIndex > manifestIndex
-          ) {
+          if (Number.isInteger(existingManifestIndex) && existingManifestIndex > manifestIndex) {
             insertIdx = i;
             break;
           }
         }
-
         validItems.splice(insertIdx, 0, img);
       }
-
-      maybeHandleRequestedArtist();
 
       function preloadLocalArtwork(item, onSuccess, onFailure) {
         const img = new Image();
@@ -581,6 +368,8 @@ export async function runQueue1Scene() {
         img.onerror = () => onFailure(item.filename);
         img.src = ARTWORK_BASE_PATH + item.filename;
       }
+
+      maybeHandleRequestedArtist();
 
       for (let i = 0; i < manifest.length; i++) {
         const item = manifest[i];
