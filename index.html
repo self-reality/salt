@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SALT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #ffffff; }
@@ -226,6 +230,291 @@
     .hidden {
       display: none;
     }
+
+    /* ------------------------------------------------------------------ */
+    /* Landing page                                                        */
+    /* ------------------------------------------------------------------ */
+    #landing-page { display: none; }
+    #landing-page.visible { display: contents; }
+
+    #can-zone {
+      position: fixed;
+      top: 10%;
+      left: 15%;
+      right: 15%;
+      bottom: 10%;
+      z-index: 1;
+      pointer-events: auto;
+      cursor: grab;
+    }
+    #can-zone:active { cursor: grabbing; }
+
+    .landing-content {
+      position: relative;
+      z-index: 2;
+      pointer-events: none;
+      padding-bottom: 1px;
+    }
+
+    .landing-section {
+      pointer-events: auto;
+      background: rgba(255, 255, 255, 0.95);
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 4rem 3rem;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+    }
+
+    .landing-spacer {
+      pointer-events: none;
+    }
+
+    /* -- Artwork info (bottom of viewport) -- */
+    .landing-artwork-info {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.08em;
+      color: #aaa;
+      text-align: center;
+      pointer-events: none;
+      z-index: 3;
+      white-space: nowrap;
+      transition: opacity 0.4s;
+    }
+
+    /* -- Hero -- */
+    .landing-hero {
+      background: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      padding-top: 12vh;
+      padding-bottom: 8rem;
+      text-align: center;
+      max-width: 640px;
+    }
+
+    .landing-hero h1 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(2.4rem, 5.5vw, 4.2rem);
+      font-weight: 400;
+      line-height: 1.12;
+      color: #111;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .hero-sub {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.9rem;
+      color: #888;
+      line-height: 1.75;
+      max-width: 360px;
+      margin: 2.5rem auto 0;
+    }
+
+    /* -- Section labels -- */
+    .section-label {
+      display: block;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: #aaa;
+      margin-bottom: 1.5rem;
+    }
+
+    /* -- Hook -- */
+    .landing-hook { text-align: center; }
+
+    .hook-lead {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 1.4rem;
+      font-style: italic;
+      color: #222;
+      line-height: 1.5;
+      margin: 0 0 1.5rem;
+    }
+
+    .landing-hook p {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.9rem;
+      color: #666;
+      line-height: 1.75;
+      margin: 0 0 0.8rem;
+    }
+
+    .hook-ref {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.75rem;
+      color: #aaa;
+      margin-top: 1.5rem !important;
+      line-height: 1.7;
+    }
+
+    /* -- Artists -- */
+    .landing-artists h2 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 1.7rem;
+      font-weight: 400;
+      color: #111;
+      line-height: 1.3;
+      margin: 0 0 1.5rem;
+    }
+
+    .landing-artists p {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.9rem;
+      color: #666;
+      line-height: 1.75;
+      margin: 0 0 0.6rem;
+    }
+
+    .landing-artists .highlight {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.8rem;
+      color: #111;
+      padding: 1.2rem 0 0;
+      margin-top: 1.2rem !important;
+      border-top: 1px solid #e8e8e8;
+    }
+
+    /* -- Launch Sequence -- */
+    .sequence-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 2.2rem;
+    }
+
+    .step-num {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.65rem;
+      color: #ccc;
+      letter-spacing: 0.1em;
+      display: block;
+      margin-bottom: 0.4rem;
+    }
+
+    .step h3 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 1.2rem;
+      font-weight: 400;
+      color: #111;
+      margin: 0 0 0.4rem;
+    }
+
+    .step p {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.85rem;
+      color: #777;
+      line-height: 1.75;
+      margin: 0;
+    }
+
+    /* -- Lifecycle -- */
+    .lifecycle-phases {
+      display: flex;
+      flex-direction: column;
+      gap: 1.8rem;
+    }
+
+    .phase {
+      padding-bottom: 1.8rem;
+      border-bottom: 1px solid #eee;
+    }
+    .phase:last-child { border-bottom: none; padding-bottom: 0; }
+
+    .phase h3 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 1.15rem;
+      font-weight: 400;
+      color: #111;
+      margin: 0 0 0.4rem;
+    }
+
+    .phase p {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.85rem;
+      color: #777;
+      line-height: 1.75;
+      margin: 0 0 0.4rem;
+    }
+
+    .phase-note {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.7rem;
+      color: #aaa;
+      line-height: 1.7;
+    }
+
+    /* -- CTA -- */
+    .landing-cta { text-align: center; }
+
+    .landing-cta h2 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: 1.8rem;
+      font-weight: 400;
+      color: #111;
+      margin: 0 0 0.4rem;
+    }
+
+    .landing-cta > p {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.85rem;
+      color: #999;
+      margin: 0 0 2rem;
+    }
+
+    .cta-form {
+      display: flex;
+      gap: 0;
+      max-width: 340px;
+      margin: 0 auto;
+    }
+
+    .cta-form input {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.85rem;
+      border: 1px solid #ddd;
+      border-right: none;
+      border-radius: 0;
+      outline: none;
+      background: #fff;
+      color: #111;
+      transition: border-color 0.2s;
+    }
+    .cta-form input:focus { border-color: #111; }
+    .cta-form input::placeholder { color: #ccc; }
+
+    .cta-form button {
+      padding: 0.75rem 1.4rem;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      background: #111;
+      color: #fff;
+      border: 1px solid #111;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .cta-form button:hover { background: #333; border-color: #333; }
+
+    /* -- Responsive -- */
+    @media (max-width: 640px) {
+      .landing-section { padding: 3rem 1.5rem; margin: 0 1rem; }
+      .landing-hero { padding-top: 8vh; }
+      #can-zone { left: 5%; right: 5%; }
+      .cta-form { flex-direction: column; }
+      .cta-form input { border-right: 1px solid #ddd; border-bottom: none; }
+    }
   </style>
 
   <script type="importmap">
@@ -253,6 +542,95 @@
       <input type="text" id="queue-search-input" placeholder="Artist name…" />
       <button type="button" id="queue-search-btn">Search</button>
     </div>
+  </div>
+
+  <!-- Landing page (hidden until landing scene activates) -->
+  <div id="landing-page">
+    <div id="can-zone"></div>
+
+    <div class="landing-content">
+      <section class="landing-section landing-hero">
+        <h1>You found the can.</h1>
+        <h1>Now decide its fate.</h1>
+        <p class="hero-sub">542 works from SuperRare's top artists have been selected for preservation through the Singularity. Each work is sealed into 12 spam cans.</p>
+      </section>
+
+      <div class="landing-spacer" style="height: 100vh;"></div>
+
+      <section class="landing-section landing-hook">
+        <p class="hook-lead">Preserving art through the upcoming technological singularity.</p>
+        <p>The Spam Can is the only vessel strong enough to hold art through the Singularity.</p>
+        <p class="hook-ref">Generative appropriation art. Readymade meets mass production&thinsp;&mdash;&thinsp;a nod to Andy Warhol.</p>
+      </section>
+
+      <div class="landing-spacer" style="height: 80vh;"></div>
+
+      <section class="landing-section landing-artists">
+        <span class="section-label">For Artists &amp; Owners</span>
+        <h2>Additional provenance in the Singularity Museum</h2>
+        <p>We are building a museum. This is one of the first pavilions.</p>
+        <p class="highlight">The artist receives 50% from the sale of their can.</p>
+      </section>
+
+      <div class="landing-spacer" style="height: 80vh;"></div>
+
+      <section class="landing-section landing-sequence">
+        <span class="section-label">Launch Sequence</span>
+        <div class="sequence-steps">
+          <div class="step">
+            <span class="step-num">01</span>
+            <h3>Discover</h3>
+            <p>Cans are revealed gradually. Artists and owners receive a Preview NFT&thinsp;&mdash;&thinsp;and must find it in their spam.</p>
+          </div>
+          <div class="step">
+            <span class="step-num">02</span>
+            <h3>Expertise</h3>
+            <p>All cans cost the same. The price per can is determined collectively. Owners get access to a closed sale.</p>
+          </div>
+          <div class="step">
+            <span class="step-num">03</span>
+            <h3>Ship</h3>
+            <p>Collection launch.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="landing-spacer" style="height: 80vh;"></div>
+
+      <section class="landing-section landing-lifecycle">
+        <span class="section-label">Can Lifecycle</span>
+        <div class="lifecycle-phases">
+          <div class="phase">
+            <h3>Discover</h3>
+            <p>White label cans go on sale. Each white label can is assigned an artist, but the buyer doesn't know which one until purchase.</p>
+          </div>
+          <div class="phase">
+            <h3>Expertise&thinsp;&mdash;&thinsp;Reveal &amp; Seal</h3>
+            <p>Each artist has one work. Each work has 12 cans. Buying at least one reveals what's inside&thinsp;&mdash;&thinsp;and the rest of that batch.</p>
+            <p class="phase-note">Sealed = contains the artwork. White label = the can before reveal.</p>
+          </div>
+          <div class="phase">
+            <h3>Ship</h3>
+            <p>You can choose how many to buy upfront. But you don't know what's inside. Purchase reveals.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="landing-spacer" style="height: 80vh;"></div>
+
+      <section class="landing-section landing-cta">
+        <h2>Be in the first batch</h2>
+        <p>Sign up for early access to the collection.</p>
+        <form class="cta-form" onsubmit="return false;">
+          <input type="email" placeholder="your@email.com" required />
+          <button type="submit">Request Access</button>
+        </form>
+      </section>
+
+      <div class="landing-spacer" style="height: 40vh;"></div>
+    </div>
+
+    <div id="landing-artwork-info" class="landing-artwork-info"></div>
   </div>
 
   <div id="controls-panel" class="controls-panel">
