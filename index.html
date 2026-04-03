@@ -6,8 +6,7 @@
   <title>SALT</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; background: #ffffff; }
-    #scene-container { position: relative; width: 100%; height: 100vh; overflow: hidden; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #ffffff; }
     canvas { display: block; }
     #loading {
       position: fixed;
@@ -33,7 +32,7 @@
 
     /* Landing page header */
     .landing-header {
-      position: absolute;
+      position: fixed;
       top: 0;
       left: 0;
       right: 0;
@@ -71,7 +70,7 @@
     .queue-ui.visible { display: block; }
 
     .queue-overlay {
-      position: absolute;
+      position: fixed;
       bottom: 166px;
       left: 50%;
       transform: translateX(-50%);
@@ -89,7 +88,7 @@
     }
 
     .queue-pause-btn {
-      position: absolute;
+      position: fixed;
       bottom: 140px;
       left: 50%;
       transform: translateX(-50%);
@@ -108,7 +107,7 @@
     }
 
     .queue-search {
-      position: absolute;
+      position: fixed;
       bottom: 100px;
       left: 50%;
       transform: translateX(-50%);
@@ -227,23 +226,6 @@
     .hidden {
       display: none;
     }
-
-    .page-content {
-      max-width: 640px;
-      margin: 0 auto;
-      padding: 4rem 2rem;
-      font-family: system-ui, -apple-system, sans-serif;
-      color: #333;
-      line-height: 1.7;
-    }
-    .page-content h2 {
-      font-size: 1.6rem;
-      font-weight: 600;
-      margin: 0 0 1rem;
-    }
-    .page-content p {
-      margin: 0 0 1.2rem;
-    }
   </style>
 
   <script type="importmap">
@@ -258,30 +240,20 @@
 <body>
   <div id="loading">Loading model…</div>
 
-  <div id="scene-container">
-    <header class="landing-header" id="landing-header">
-      <h1>SALT</h1>
-      <p class="subtitle">Space Archive Latent The</p>
-      <p class="description">Placeholder text block</p>
-    </header>
+  <header class="landing-header" id="landing-header">
+    <h1>SALT</h1>
+    <p class="subtitle">Space Archive Latent The</p>
+    <p class="description">Placeholder text block</p>
+  </header>
 
-    <div id="queue-ui" class="queue-ui">
-      <div id="queue-overlay" class="queue-overlay"></div>
-      <button type="button" id="queue-pause" class="queue-pause-btn" aria-label="Pause artwork cycling">Pause</button>
-      <div id="queue-search" class="queue-search">
-        <input type="text" id="queue-search-input" placeholder="Artist name…" />
-        <button type="button" id="queue-search-btn">Search</button>
-      </div>
+  <div id="queue-ui" class="queue-ui">
+    <div id="queue-overlay" class="queue-overlay"></div>
+    <button type="button" id="queue-pause" class="queue-pause-btn" aria-label="Pause artwork cycling">Pause</button>
+    <div id="queue-search" class="queue-search">
+      <input type="text" id="queue-search-input" placeholder="Artist name…" />
+      <button type="button" id="queue-search-btn">Search</button>
     </div>
   </div>
-
-  <section class="page-content">
-    <h2>About SALT</h2>
-    <p>This is placeholder text so you can test page scrolling. The 3D scene above stays contained in its own viewport-height section. Scroll down to see this content, scroll back up to return to the can.</p>
-    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
-    <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
-    <p>More placeholder text to add height. The page should now scroll past the 3D scene and into this text area. You can drag to rotate the model above, but scroll will move the page.</p>
-  </section>
 
   <div id="controls-panel" class="controls-panel">
     <div class="controls-panel-header">
