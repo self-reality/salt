@@ -19,7 +19,7 @@ const CAN_TEXTURE_PATH = 'bennyrizzo - 1950s-spam/textures/';
 const ARTWORK_BASE_PATH = 'artworks/';
 const DATASET_PATH = 'queue/most-expensive-artworks.json';
 const SAMPLE_SIZE = 50;
-const INTERVAL_MS = 3000;
+const INTERVAL_MS = 300;
 
 const ENV_MAP_URL =
   'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r164/examples/textures/equirectangular/venice_sunset_1k.hdr';
