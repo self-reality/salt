@@ -237,10 +237,36 @@ export function runVanCanScene() {
   const vfovDeg = THREE.MathUtils.radToDeg(
     2 * Math.atan((CAM_SENSOR_HEIGHT_MM / 2) / CAM_LENS_MM),
   );
-  const camera = new THREE.PerspectiveCamera(vfovDeg, RENDER_ASPECT, 0.1, 1000);
-  camera.position.set(...CAM_LOCATION);
-  setBlenderEulerXYZ(camera, CAM_ROTATION);
+  const camera = new THREE.PerspectiveCamera(
+    vfovDeg,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000,
+  );
   blenderRoot.add(camera);
+
+  // --- Live tweak state (seeded from baked constants) ---
+  let canPivot = null;
+  let vanPivot = null;
+  const canState = { pos: [...CAN_LOCATION], rot: [...CAN_ROTATION], scale: 1 };
+  const vanState = { pos: [...VAN_LOCATION], rot: [...VAN_ROTATION], scale: 1 };
+  const camState = { pos: [...CAM_LOCATION], rot: [...CAM_ROTATION] };
+
+  function applyTransforms() {
+    if (canPivot) {
+      canPivot.position.set(...canState.pos);
+      setBlenderEulerXYZ(canPivot, canState.rot);
+      canPivot.scale.setScalar(canState.scale);
+    }
+    if (vanPivot) {
+      vanPivot.position.set(...vanState.pos);
+      setBlenderEulerXYZ(vanPivot, vanState.rot);
+      vanPivot.scale.setScalar(vanState.scale);
+    }
+    camera.position.set(...camState.pos);
+    setBlenderEulerXYZ(camera, camState.rot);
+  }
+  applyTransforms();
 
   // --- Lighting ---
   scene.add(new THREE.AmbientLight(0xffffff, AMBIENT_INTENSITY));
@@ -274,10 +300,9 @@ export function runVanCanScene() {
 
       const nativeSize = meshBoundsAtIdentity(van);
       const scaleFactor = uniformFitScale(nativeSize, VAN_TARGET_DIMS);
-      const vanPivot = centerPivot(van, scaleFactor);
-      vanPivot.position.set(...VAN_LOCATION);
-      setBlenderEulerXYZ(vanPivot, VAN_ROTATION);
+      vanPivot = centerPivot(van, scaleFactor);
       blenderRoot.add(vanPivot);
+      applyTransforms();
 
       console.log('[van-can] van FBX loaded', {
         nativeSize: [nativeSize.x, nativeSize.y, nativeSize.z],
@@ -316,10 +341,9 @@ export function runVanCanScene() {
 
       const nativeSize = meshBoundsAtIdentity(can);
       const scaleFactor = uniformFitScale(nativeSize, CAN_TARGET_DIMS);
-      const canPivot = centerPivot(can, scaleFactor);
-      canPivot.position.set(...CAN_LOCATION);
-      setBlenderEulerXYZ(canPivot, CAN_ROTATION);
+      canPivot = centerPivot(can, scaleFactor);
       blenderRoot.add(canPivot);
+      applyTransforms();
 
       console.log('[van-can] can FBX loaded', {
         nativeSize: [nativeSize.x, nativeSize.y, nativeSize.z],
@@ -340,15 +364,214 @@ export function runVanCanScene() {
     },
   );
 
-  // --- Render loop (static framing — no controls, fixed aspect) ---
+  // --- Render loop ---
   function animate() {
     requestAnimationFrame(animate);
     renderer.render(scene, camera);
   }
   animate();
 
-  // --- Resize: keep renderer matching window, but lock camera aspect to 16:9 ---
+  // --- Resize: live aspect (no stretching) ---
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+  });
+
+  buildTweakPanel({ canState, vanState, camState, applyTransforms });
+}
+
+// ---------------------------------------------------------------------------
+// Tweak panel — manual sliders for can/van/camera transforms.
+// Inject DOM + styles directly so the rest of the codebase stays untouched.
+// ---------------------------------------------------------------------------
+const TWEAK_PANEL_STYLES = `
+  .van-can-panel {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 100;
+    background: rgba(255,255,255,0.96);
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 0.8rem;
+    color: #222;
+    width: 320px;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  }
+  .van-can-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+  .van-can-panel-header button {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    cursor: pointer;
+  }
+  .van-can-panel.collapsed .van-can-panel-body { display: none; }
+  .van-can-panel section { margin-bottom: 0.6rem; }
+  .van-can-panel section h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 0.3rem 0 0.2rem;
+    color: #333;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .van-can-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.15rem 0;
+  }
+  .van-can-row > label {
+    width: 3.2rem;
+    font-size: 0.72rem;
+    color: #555;
+  }
+  .van-can-row input[type="range"] { flex: 1; min-width: 0; }
+  .van-can-row input[type="number"] {
+    width: 4.6rem;
+    padding: 0.1rem 0.25rem;
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .van-can-copy {
+    width: 100%;
+    padding: 0.4rem;
+    margin-top: 0.4rem;
+    cursor: pointer;
+    font-size: 0.78rem;
+    background: #111;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+  }
+  .van-can-copy:hover { background: #333; }
+`;
+
+function buildTweakPanel({ canState, vanState, camState, applyTransforms }) {
+  if (!document.getElementById('van-can-panel-styles')) {
+    const style = document.createElement('style');
+    style.id = 'van-can-panel-styles';
+    style.textContent = TWEAK_PANEL_STYLES;
+    document.head.appendChild(style);
+  }
+
+  const panel = document.createElement('div');
+  panel.className = 'van-can-panel';
+  panel.innerHTML = `
+    <div class="van-can-panel-header">
+      <span>Tweak transforms</span>
+      <button type="button" class="van-can-toggle">Hide</button>
+    </div>
+    <div class="van-can-panel-body"></div>
+  `;
+  document.body.appendChild(panel);
+
+  const body = panel.querySelector('.van-can-panel-body');
+  const toggleBtn = panel.querySelector('.van-can-toggle');
+  toggleBtn.addEventListener('click', () => {
+    panel.classList.toggle('collapsed');
+    toggleBtn.textContent = panel.classList.contains('collapsed') ? 'Show' : 'Hide';
+  });
+
+  function addSection(title, state, opts = {}) {
+    const section = document.createElement('section');
+    section.innerHTML = `<h3>${title}</h3>`;
+    body.appendChild(section);
+
+    const axes = ['X', 'Y', 'Z'];
+    addVectorRows(section, 'Pos', state.pos, -20, 20, 0.01, applyTransforms);
+    addVectorRows(section, 'Rot', state.rot, -180, 180, 0.1, applyTransforms);
+    if (opts.scale) {
+      addScalarRow(section, 'Scale', state, 'scale', 0.1, 5, 0.01, applyTransforms);
+    }
+  }
+
+  function addVectorRows(parent, label, vec, min, max, step, onChange) {
+    const axes = ['X', 'Y', 'Z'];
+    axes.forEach((axis, i) => {
+      const row = document.createElement('div');
+      row.className = 'van-can-row';
+      row.innerHTML = `
+        <label>${label} ${axis}</label>
+        <input type="range" min="${min}" max="${max}" step="${step}" value="${vec[i]}">
+        <input type="number" step="${step}" value="${vec[i]}">
+      `;
+      parent.appendChild(row);
+      const range = row.querySelector('input[type="range"]');
+      const num = row.querySelector('input[type="number"]');
+      const handler = (src) => () => {
+        const v = parseFloat(src.value);
+        if (!Number.isFinite(v)) return;
+        vec[i] = v;
+        if (src === range) num.value = v;
+        else range.value = v;
+        onChange();
+      };
+      range.addEventListener('input', handler(range));
+      num.addEventListener('input', handler(num));
+    });
+  }
+
+  function addScalarRow(parent, label, obj, key, min, max, step, onChange) {
+    const row = document.createElement('div');
+    row.className = 'van-can-row';
+    row.innerHTML = `
+      <label>${label}</label>
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${obj[key]}">
+      <input type="number" step="${step}" value="${obj[key]}">
+    `;
+    parent.appendChild(row);
+    const range = row.querySelector('input[type="range"]');
+    const num = row.querySelector('input[type="number"]');
+    const handler = (src) => () => {
+      const v = parseFloat(src.value);
+      if (!Number.isFinite(v)) return;
+      obj[key] = v;
+      if (src === range) num.value = v;
+      else range.value = v;
+      onChange();
+    };
+    range.addEventListener('input', handler(range));
+    num.addEventListener('input', handler(num));
+  }
+
+  addSection('Can', canState, { scale: true });
+  addSection('Van', vanState, { scale: true });
+  addSection('Camera', camState, { scale: false });
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'van-can-copy';
+  copyBtn.textContent = 'Copy values';
+  body.appendChild(copyBtn);
+
+  const fmtVec = (v, p = 6) => `[${v.map((n) => n.toFixed(p)).join(', ')}]`;
+  copyBtn.addEventListener('click', () => {
+    const text =
+      `const VAN_LOCATION = ${fmtVec(vanState.pos, 6)};\n` +
+      `const VAN_ROTATION = ${fmtVec(vanState.rot, 4)};\n` +
+      `const VAN_SCALE = ${vanState.scale.toFixed(4)};\n` +
+      `const CAN_LOCATION = ${fmtVec(canState.pos, 6)};\n` +
+      `const CAN_ROTATION = ${fmtVec(canState.rot, 4)};\n` +
+      `const CAN_SCALE = ${canState.scale.toFixed(4)};\n` +
+      `const CAM_LOCATION = ${fmtVec(camState.pos, 6)};\n` +
+      `const CAM_ROTATION = ${fmtVec(camState.rot, 4)};`;
+    console.log(text);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(
+        () => { copyBtn.textContent = 'Copied!'; setTimeout(() => (copyBtn.textContent = 'Copy values'), 1200); },
+        () => { copyBtn.textContent = 'Copy failed (see console)'; },
+      );
+    }
   });
 }
