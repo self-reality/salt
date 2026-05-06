@@ -348,9 +348,6 @@ export function runVanCanScene() {
   rimLight.position.set(...RIM_LIGHT_POSITION);
   scene.add(rimLight);
 
-  // Origin axes so we can confirm where the Blender frame's origin is in the viewport.
-  blenderRoot.add(new THREE.AxesHelper(2));
-
   // --- Van ---
   const vanMaterials = buildVanMaterials();
 
