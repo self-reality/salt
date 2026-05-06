@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { loadCan } from '../lib/can.js';
+import {
+  buildRandomManifestFromDataset,
+  buildEntryFromDatasetItem,
+  findArtistInDataset,
+  waveSortManifest,
+  insertIndexInWave,
+} from '../lib/dataset.js';
 
 // ---------------------------------------------------------------------------
 // Asset paths
@@ -8,6 +16,10 @@ import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 const VAN_FBX_PATH = 'van/apocalyptic-old-van-driveable-with-interior/source/Van.fbx';
 const CAN_FBX_PATH = 'bennyrizzo - 1950s-spam/source/Spam can.fbx';
 const CAN_TEXTURE_PATH = 'bennyrizzo - 1950s-spam/textures/';
+const ARTWORK_BASE_PATH = 'artworks/';
+const DATASET_PATH = 'queue/most-expensive-artworks.json';
+const SAMPLE_SIZE = 50;
+const INTERVAL_MS = 3000;
 
 const ENV_MAP_URL =
   'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r164/examples/textures/equirectangular/venice_sunset_1k.hdr';
@@ -94,15 +106,6 @@ const ENV_MAP_INTENSITY = 1.19;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const textureLoader = new THREE.TextureLoader();
-
-function loadTex(basePath, filename, colorSpace) {
-  const tex = textureLoader.load(basePath + filename);
-  tex.colorSpace = colorSpace || THREE.LinearSRGBColorSpace;
-  tex.flipY = true;
-  return tex;
-}
-
 // Blender's "XYZ Euler" is extrinsic XYZ (= matrix Rz·Ry·Rx). Three.js's
 // 'XYZ' Euler order is intrinsic (= Rx·Ry·Rz) — different matrix entirely.
 // Three.js's 'ZYX' order produces Rz·Ry·Rx, which matches Blender's XYZ.
@@ -239,12 +242,28 @@ function applyVanMaterials(root, materials) {
 // ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
-export function runVanCanScene() {
+export async function runVanCanScene() {
   // Hide DOM elements only used by other scenes.
   for (const id of ['controls-panel', 'landing-header', 'landing-page', 'landing-artwork-info']) {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   }
+
+  const requestedArtist = new URLSearchParams(location.search).get('artist');
+
+  // Build manifest from dataset (used to cycle artworks onto the can label).
+  const fullDataset = await fetch(DATASET_PATH).then((r) => r.json());
+  const manifest = waveSortManifest(
+    buildRandomManifestFromDataset(fullDataset, SAMPLE_SIZE),
+  );
+
+  // --- Queue UI DOM references ---
+  const queueUI = document.getElementById('queue-ui');
+  const overlay = document.getElementById('queue-overlay');
+  const pauseButton = document.getElementById('queue-pause');
+  const searchInput = document.getElementById('queue-search-input');
+  const searchButton = document.getElementById('queue-search-btn');
+  const searchContainer = document.getElementById('queue-search');
 
   // --- Renderer ---
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -378,49 +397,285 @@ export function runVanCanScene() {
     (err) => console.error('[van-can] van FBX failed to load:', err),
   );
 
-  // --- Can (PBR material mirroring lib/can.js, no decal/baking) ---
-  const canMaterial = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    map: loadTex(CAN_TEXTURE_PATH, 'BaseColor.png', THREE.SRGBColorSpace),
-    metalnessMap: loadTex(CAN_TEXTURE_PATH, 'Metallic_4.png'),
-    metalness: 1.0,
-    roughnessMap: loadTex(CAN_TEXTURE_PATH, 'Roughness.png'),
-    roughness: 1.0,
-    normalMap: loadTex(CAN_TEXTURE_PATH, 'Normal.png'),
-    envMapIntensity: ENV_MAP_INTENSITY,
-  });
+  // --- Can (loaded via shared loadCan: PBR material + decal canvas pipeline) ---
+  // loadCan internally normalizes the can so its longest axis is 3 units and
+  // bbox is centered at origin. Convert that frame to Blender meters with a
+  // single static factor so the existing can layout values still apply.
+  const CAN_PIVOT_SCALE = Math.max(...CAN_TARGET_DIMS) / 3;
 
-  new FBXLoader().load(
-    CAN_FBX_PATH,
-    (can) => {
-      can.traverse((child) => {
-        if (child.isMesh) child.material = canMaterial;
-      });
+  // Positioning helper for the queue UI controls — declared here so the resize
+  // handler below can reference it before the can finishes loading.
+  let positionPauseButton = () => {};
 
-      const nativeSize = meshBoundsAtIdentity(can);
-      const scaleFactor = uniformFitScale(nativeSize, CAN_TARGET_DIMS);
-      canPivot = centerPivot(can, scaleFactor);
+  loadCan({
+    modelPath: CAN_FBX_PATH,
+    texturePath: CAN_TEXTURE_PATH,
+    onLoaded({ canGroup, material, setArtworkFromImage, height }) {
+      material.envMapIntensity = ENV_MAP_INTENSITY;
+
+      canPivot = centerPivot(canGroup, CAN_PIVOT_SCALE);
       blenderRoot.add(canPivot);
       applyTransforms();
-
-      console.log('[van-can] can FBX loaded', {
-        nativeSize: [nativeSize.x, nativeSize.y, nativeSize.z],
-        scaleFactor,
-        finalSize: [nativeSize.x * scaleFactor, nativeSize.y * scaleFactor, nativeSize.z * scaleFactor],
-      });
-      window.__can = can;
+      window.__canGroup = canGroup;
       window.__canPivot = canPivot;
 
       const loadingEl = document.getElementById('loading');
       if (loadingEl) loadingEl.classList.add('hidden');
+
+      if (queueUI) queueUI.classList.add('visible');
+
+      // Stretch state — distorts the can vertically per artwork aspect ratio.
+      const originalHeight = height;
+
+      function applyStretchY(stretchFactor) {
+        if (!Number.isFinite(stretchFactor) || stretchFactor <= 0) return;
+
+        const targetHeight = originalHeight * stretchFactor;
+        const deltaY = (targetHeight - originalHeight) / 2;
+
+        let minY = Infinity, maxY = -Infinity;
+        canGroup.traverse((child) => {
+          if (!child.isMesh || !child.userData.restPositions) return;
+          const rest = child.userData.restPositions;
+          for (let i = 1; i < rest.length; i += 3) {
+            minY = Math.min(minY, rest[i]);
+            maxY = Math.max(maxY, rest[i]);
+          }
+        });
+
+        const centerY = (minY + maxY) / 2;
+
+        canGroup.traverse((child) => {
+          if (!child.isMesh || !child.userData.restPositions) return;
+          const rest = child.userData.restPositions;
+          const pos = child.geometry.attributes.position;
+          for (let i = 0; i < pos.count; i++) {
+            const restX = rest[i * 3];
+            const restY = rest[i * 3 + 1];
+            const restZ = rest[i * 3 + 2];
+            const newY = restY < centerY ? restY - deltaY : restY + deltaY;
+            pos.setXYZ(i, restX, newY, restZ);
+          }
+          pos.needsUpdate = true;
+          child.geometry.computeVertexNormals();
+        });
+      }
+
+      // Artwork cycling state
+      const preloaded = new Array(manifest.length);
+      let loadedCount = 0;
+      let validItems = [];
+      let seqIndex = 0;
+      let isPaused = false;
+      let artworkIntervalId = null;
+      let hasStartedArtwork = false;
+      let requestedArtistHandled = false;
+
+      function updateOverlay(item) {
+        if (overlay) overlay.innerHTML = `${item.username}<br>${item.name}`;
+      }
+
+      function applyArtworkByIndex(index) {
+        if (!validItems.length) return;
+        const safeIndex = ((index % validItems.length) + validItems.length) % validItems.length;
+        const item = validItems[safeIndex];
+        setArtworkFromImage(item, applyStretchY);
+        updateOverlay(item._item);
+      }
+
+      function startArtworkLoop() {
+        if (!validItems.length || artworkIntervalId) return;
+        artworkIntervalId = window.setInterval(() => {
+          seqIndex = (seqIndex + 1) % validItems.length;
+          applyArtworkByIndex(seqIndex);
+        }, INTERVAL_MS);
+      }
+
+      function stopArtworkLoop() {
+        if (!artworkIntervalId) return;
+        window.clearInterval(artworkIntervalId);
+        artworkIntervalId = null;
+      }
+
+      positionPauseButton = function positionPauseButton() {
+        if (!overlay || !pauseButton) return;
+        const overlayRect = overlay.getBoundingClientRect();
+        const buttonRect = pauseButton.getBoundingClientRect();
+        const overlayBottomFromViewportBottom = window.innerHeight - overlayRect.bottom;
+        const gapPx = 6;
+        const newBottom = overlayBottomFromViewportBottom - (buttonRect.height + gapPx);
+        pauseButton.style.bottom = `${Math.max(8, newBottom)}px`;
+
+        if (searchContainer) {
+          const pauseBottom = parseFloat(pauseButton.style.bottom);
+          const searchBottom = pauseBottom - searchContainer.getBoundingClientRect().height - gapPx;
+          searchContainer.style.bottom = `${Math.max(8, searchBottom)}px`;
+        }
+      };
+
+      function pauseOnIndex(index) {
+        if (!validItems.length) return;
+        seqIndex = index;
+        applyArtworkByIndex(seqIndex);
+        isPaused = true;
+        stopArtworkLoop();
+        if (pauseButton) {
+          pauseButton.textContent = 'Play';
+          pauseButton.setAttribute('aria-label', 'Play artwork cycling');
+        }
+      }
+
+      // Pause button
+      if (pauseButton) {
+        pauseButton.addEventListener('click', () => {
+          isPaused = !isPaused;
+          pauseButton.textContent = isPaused ? 'Play' : 'Pause';
+          pauseButton.setAttribute(
+            'aria-label',
+            isPaused ? 'Play artwork cycling' : 'Pause artwork cycling',
+          );
+          if (isPaused) stopArtworkLoop();
+          else startArtworkLoop();
+        });
+      }
+
+      // Search
+      let searchBusy = false;
+      function performSearch() {
+        const query = searchInput?.value.trim();
+        if (!query || searchBusy) return;
+        const match = findArtistInDataset(fullDataset, query);
+        if (!match) {
+          if (searchInput) {
+            searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
+            searchInput.placeholder = 'Not found';
+            searchInput.value = '';
+            setTimeout(() => {
+              searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
+              searchInput.placeholder = 'Artist name…';
+            }, 1500);
+          }
+          return;
+        }
+        searchBusy = true;
+        if (searchButton) searchButton.textContent = '…';
+        const item = buildEntryFromDatasetItem(match);
+        if (!item) { searchBusy = false; if (searchButton) searchButton.textContent = 'Search'; return; }
+        preloadLocalArtwork(
+          item,
+          (img) => {
+            const ar = item.height / item.width;
+            const insertIdx = insertIndexInWave(validItems, ar);
+            validItems.splice(insertIdx, 0, img);
+            pauseOnIndex(insertIdx);
+            positionPauseButton();
+            if (searchInput) searchInput.value = '';
+            searchBusy = false;
+            if (searchButton) searchButton.textContent = 'Search';
+          },
+          () => {
+            if (searchInput) {
+              searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
+              searchInput.placeholder = 'Artwork not found';
+              searchInput.value = '';
+              setTimeout(() => {
+                searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
+                searchInput.placeholder = 'Artist name…';
+              }, 1500);
+            }
+            searchBusy = false;
+            if (searchButton) searchButton.textContent = 'Search';
+          },
+        );
+      }
+
+      if (searchButton) searchButton.addEventListener('click', performSearch);
+      if (searchInput) searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') performSearch();
+      });
+
+      function maybeStartFromFirstLoadedArtwork() {
+        if (hasStartedArtwork || !validItems.length) return;
+        stopArtworkLoop();
+        seqIndex = 0;
+        applyArtworkByIndex(seqIndex);
+        positionPauseButton();
+        hasStartedArtwork = true;
+        if (!isPaused) startArtworkLoop();
+      }
+
+      // Requested artist via ?artist= param
+      function maybeHandleRequestedArtist() {
+        if (requestedArtistHandled || !requestedArtist) return;
+        requestedArtistHandled = true;
+        const match = findArtistInDataset(fullDataset, requestedArtist);
+        if (!match) return;
+        const item = buildEntryFromDatasetItem(match);
+        if (!item) return;
+        preloadLocalArtwork(
+          item,
+          (img) => {
+            const ar = item.height / item.width;
+            const insertIdx = insertIndexInWave(validItems, ar);
+            validItems.splice(insertIdx, 0, img);
+            pauseOnIndex(insertIdx);
+            positionPauseButton();
+          },
+          () => console.warn(`Requested artist artwork not found: ${item.username}`),
+        );
+      }
+
+      function insertManifestImageInOrder(img, manifestIndex) {
+        img._manifestIndex = manifestIndex;
+        let insertIdx = validItems.length;
+        for (let i = 0; i < validItems.length; i++) {
+          const existingManifestIndex = validItems[i]._manifestIndex;
+          if (Number.isInteger(existingManifestIndex) && existingManifestIndex > manifestIndex) {
+            insertIdx = i;
+            break;
+          }
+        }
+        validItems.splice(insertIdx, 0, img);
+      }
+
+      function preloadLocalArtwork(item, onSuccess, onFailure) {
+        const img = new Image();
+        img._item = item;
+        img.onload = () => onSuccess(img);
+        img.onerror = () => onFailure(item.filename);
+        img.src = ARTWORK_BASE_PATH + item.filename;
+      }
+
+      maybeHandleRequestedArtist();
+
+      for (let i = 0; i < manifest.length; i++) {
+        const item = manifest[i];
+        preloadLocalArtwork(
+          item,
+          (img) => {
+            if (!preloaded[i]) {
+              preloaded[i] = img;
+              insertManifestImageInOrder(img, i);
+              maybeStartFromFirstLoadedArtwork();
+            }
+            loadedCount++;
+            if (loadedCount === manifest.length && validItems.length === 0) {
+              console.warn('No artwork images loaded successfully from manifest.');
+            }
+          },
+          (filename) => {
+            console.warn(
+              `Artwork not found in /artworks: ${filename} (${item.username} — "${item.name}")`,
+            );
+            loadedCount++;
+            if (loadedCount === manifest.length && validItems.length === 0) {
+              console.warn('No artwork images loaded successfully from manifest.');
+            }
+          },
+        );
+      }
     },
-    undefined,
-    (err) => {
-      console.error('[van-can] can FBX failed to load:', err);
-      const loadingEl = document.getElementById('loading');
-      if (loadingEl) loadingEl.textContent = 'Failed to load model.';
-    },
-  );
+  });
 
   // --- Render loop ---
   function animate() {
@@ -436,6 +691,7 @@ export function runVanCanScene() {
     camera.updateProjectionMatrix();
     syncResponsiveLayout();
     applyTransforms();
+    positionPauseButton();
   });
 
   buildTweakPanel({ canState, vanState, camState, applyTransforms });
