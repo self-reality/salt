@@ -15,19 +15,61 @@ const ENV_MAP_URL =
 // ---------------------------------------------------------------------------
 // Blender-frame transforms (Z-up, XYZ Euler in degrees)
 // ---------------------------------------------------------------------------
-const VAN_LOCATION = [12.984661, -2.486563, 0.293134];
-const VAN_ROTATION = [90.0, 0.0, -20.4889];
 const VAN_TARGET_DIMS = [2.67, 2.56, 5.93]; // meters, Blender X×Y×Z
-
-const CAN_LOCATION = [-0.805306, -5.155402, 7.926760];
-const CAN_ROTATION = [75.6502, 5.0655, -12.0060];
 const CAN_TARGET_DIMS = [2.47, 1.20, 1.96]; // meters, Blender X×Y×Z
+
+const WIDE_BREAKPOINT = 800;
+const NARROW_BREAKPOINT = 400;
+
+const WIDE_LAYOUT = {
+  van: { pos: [12.010000, -1.490000, 0.293134], rot: [90.0000, 0.0000, -20.4889], scale: 1.0000 },
+  can: { pos: [-1.800000, -4.170000, 7.926760], rot: [95.1000, -1.2000, -16.4000], scale: 0.9300 },
+};
+
+const NARROW_LAYOUT = {
+  van: { pos: [6.680000, 0.070000, 0.293134], rot: [90.0000, 0.0000, -20.4889], scale: 0.9600 },
+  can: { pos: [-2.080000, -5.660000, 8.200000], rot: [95.1000, -1.2000, -16.4000], scale: 0.7900 },
+};
 
 const CAM_LOCATION = [-7.922897, -9.636917, 9.522479];
 const CAM_ROTATION = [71.9608, 0.0004, -55.7089];
 const CAM_LENS_MM = 37.8;
 const CAM_SENSOR_HEIGHT_MM = 24;
 const RENDER_ASPECT = 1920 / 1080;
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpVec3(a, b, t) {
+  return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+}
+
+function resolveLayout(width) {
+  if (width >= WIDE_BREAKPOINT) {
+    return {
+      van: { pos: [...WIDE_LAYOUT.van.pos], rot: [...WIDE_LAYOUT.van.rot], scale: WIDE_LAYOUT.van.scale },
+      can: { pos: [...WIDE_LAYOUT.can.pos], rot: [...WIDE_LAYOUT.can.rot], scale: WIDE_LAYOUT.can.scale },
+    };
+  }
+  if (width >= NARROW_BREAKPOINT) {
+    const t = (width - NARROW_BREAKPOINT) / (WIDE_BREAKPOINT - NARROW_BREAKPOINT);
+    return {
+      van: {
+        pos: lerpVec3(NARROW_LAYOUT.van.pos, WIDE_LAYOUT.van.pos, t),
+        rot: lerpVec3(NARROW_LAYOUT.van.rot, WIDE_LAYOUT.van.rot, t),
+        scale: lerp(NARROW_LAYOUT.van.scale, WIDE_LAYOUT.van.scale, t),
+      },
+      can: {
+        pos: lerpVec3(NARROW_LAYOUT.can.pos, WIDE_LAYOUT.can.pos, t),
+        rot: lerpVec3(NARROW_LAYOUT.can.rot, WIDE_LAYOUT.can.rot, t),
+        scale: lerp(NARROW_LAYOUT.can.scale, WIDE_LAYOUT.can.scale, t),
+      },
+    };
+  }
+  const k = width / NARROW_BREAKPOINT;
+  return {
+    van: { pos: [...NARROW_LAYOUT.van.pos], rot: [...NARROW_LAYOUT.van.rot], scale: NARROW_LAYOUT.van.scale * k },
+    can: { pos: [...NARROW_LAYOUT.can.pos], rot: [...NARROW_LAYOUT.can.rot], scale: NARROW_LAYOUT.can.scale * k },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Look
@@ -245,12 +287,31 @@ export function runVanCanScene() {
   );
   blenderRoot.add(camera);
 
-  // --- Live tweak state (seeded from baked constants) ---
+  // --- Live tweak state (seeded from responsive layout for current width) ---
   let canPivot = null;
   let vanPivot = null;
-  const canState = { pos: [...CAN_LOCATION], rot: [...CAN_ROTATION], scale: 1 };
-  const vanState = { pos: [...VAN_LOCATION], rot: [...VAN_ROTATION], scale: 1 };
+  const initialLayout = resolveLayout(window.innerWidth);
+  const canState = {
+    pos: [...initialLayout.can.pos],
+    rot: [...initialLayout.can.rot],
+    scale: initialLayout.can.scale,
+  };
+  const vanState = {
+    pos: [...initialLayout.van.pos],
+    rot: [...initialLayout.van.rot],
+    scale: initialLayout.van.scale,
+  };
   const camState = { pos: [...CAM_LOCATION], rot: [...CAM_ROTATION] };
+
+  function syncResponsiveLayout() {
+    const layout = resolveLayout(window.innerWidth);
+    canState.pos.splice(0, 3, ...layout.can.pos);
+    canState.rot.splice(0, 3, ...layout.can.rot);
+    canState.scale = layout.can.scale;
+    vanState.pos.splice(0, 3, ...layout.van.pos);
+    vanState.rot.splice(0, 3, ...layout.van.rot);
+    vanState.scale = layout.van.scale;
+  }
 
   function applyTransforms() {
     if (canPivot) {
@@ -371,11 +432,13 @@ export function runVanCanScene() {
   }
   animate();
 
-  // --- Resize: live aspect (no stretching) ---
+  // --- Resize: live aspect (no stretching) + responsive van/can layout ---
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    syncResponsiveLayout();
+    applyTransforms();
   });
 
   buildTweakPanel({ canState, vanState, camState, applyTransforms });
