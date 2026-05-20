@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anchoring facts</title>
+  <style>
+    /* =================================================================
+       "Anchoring facts" — Figma node 2062:1176 (Latent-space crawler)
+       A nutrition-facts-style label. On the canvas it's rotated 90°
+       (it wraps a can); this is the natural, un-rotated auto layout.
+
+       Figma auto layout  ->  CSS
+         frame             ->  display: flex
+         direction         ->  flex-direction
+         item spacing      ->  gap
+         padding           ->  padding
+         Fill container    ->  flex: 1 1 0  (stretches to fill width)
+         Fixed / Hug       ->  flex: 0 0 auto / width:auto
+
+       SCALE: every size in the design is a multiple of one base unit
+       (1.882px in Figma). The whole label is driven off --u below, so
+       changing --u rescales the entire thing. Width still stretches
+       independently via flexbox.
+       ================================================================= */
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 40px;
+      background: #e9eaec;
+      font-family: Helvetica, Arial, sans-serif;
+      color: #272727;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .hint {
+      font-size: 13px;
+      color: #6b7280;
+      max-width: 60ch;
+    }
+    .hint code { background: #d6d8db; padding: 1px 5px; border-radius: 4px; }
+
+    /* Live total-width readout shown under the table */
+    .width-readout {
+      margin: 0;
+      font-size: 13px;
+      color: #6b7280;
+      font-variant-numeric: tabular-nums;
+    }
+    .width-readout strong { color: #272727; }
+
+    /* Drag the bottom-right handle to resize — the right column stretches. */
+    .resizable {
+      width: 100%;
+      max-width: 1000px;
+      min-width: 320px;
+      resize: horizontal;
+      overflow: auto;
+    }
+
+    /* ---- The "Anchoring facts" frame (root horizontal auto layout) ---- */
+    .frame {
+      --u: 4px;                       /* base design unit (1.882px), scaled */
+      display: flex;                  /* auto layout frame */
+      align-items: stretch;           /* both columns share the tallest height */
+      width: 100%;                    /* Fill container (stretches with page) */
+      background: #fff;
+      color: #272727;
+      border: var(--u) solid #272727; /* 1u outer border */
+      font-family: Helvetica, Arial, sans-serif;
+    }
+
+    /* ---- Left column: title block (Fixed width, does not stretch) ---- */
+    .col-title {
+      flex: 0 0 auto;
+      width: calc(56.3 * var(--u));   /* 106px */
+      padding: calc(3 * var(--u));    /* 5.646px */
+      display: flex;
+      flex-direction: column;
+      gap: calc(1.5 * var(--u));      /* 2.823px */
+    }
+
+    /* ---- Right column: details list (Fill container — stretches) ---- */
+    .col-details {
+      flex: 1 1 0;
+      min-width: 0;
+      /* top / right / bottom / left(0) — no left padding, per design */
+      padding: calc(3 * var(--u)) calc(3 * var(--u)) calc(3 * var(--u)) 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---- Shared bits ---- */
+    .divider-medium { height: var(--u);              background: #272727; }   /* 1.882px */
+    .divider-thin   { height: calc(0.25 * var(--u)); background: #272727; }   /* 0.47px  */
+    .divider-big    { height: calc(2.5 * var(--u));  background: #272727; }   /* 4.705px */
+
+    .row {
+      display: flex;
+      justify-content: space-between;  /* label left, value right */
+      align-items: flex-end;
+      gap: var(--u);
+    }
+
+    /* ---- Title ---- */
+    .title {
+      margin: 0;
+      font-size: calc(7 * var(--u));  /* 13.173px */
+      font-weight: bold;
+      line-height: 1;
+      word-break: break-word;
+    }
+
+    /* ---- Serving info ---- */
+    .serving { display: flex; flex-direction: column; gap: calc(0.5 * var(--u)); }
+    .serving-note { margin: 0; font-size: calc(3 * var(--u)); }            /* regular */
+    .serving .row { font-size: calc(3 * var(--u)); font-weight: bold; }
+
+    /* ---- R0 / Components ---- */
+    .metrics { display: flex; flex-direction: column; gap: var(--u); font-weight: bold; }
+    .boost { margin: 0; font-size: calc(2.5 * var(--u)); }                  /* 4.705px */
+    .boost sub { font-size: calc(1.6 * var(--u)); vertical-align: baseline; }
+    .components-label { font-size: calc(4 * var(--u)); }                    /* 7.528px */
+    .components-value { font-size: calc(6 * var(--u)); text-align: right; white-space: nowrap; } /* 11.291px */
+
+    /* ---- Footer (logo + footnote) ---- */
+    .footer { display: flex; align-items: center; gap: calc(0.5 * var(--u)); padding: calc(0.75 * var(--u)) 0; }
+    .logo { flex: 0 0 auto; width: calc(11 * var(--u)); height: calc(11 * var(--u)); transform: rotate(90deg); }
+    .footnote { font-size: calc(2 * var(--u)); line-height: 1.15; }        /* 3.764px */
+    .footnote p { margin: 0; }
+
+    /* ---- Details list ---- */
+    .details { display: flex; flex-direction: column; gap: calc(1.5 * var(--u)); }
+    .group   { display: flex; flex-direction: column; }
+
+    .item {
+      display: flex;
+      justify-content: space-between;            /* value pinned right -> stretches */
+      align-items: flex-end;
+      gap: var(--u);
+      padding: calc(0.6 * var(--u)) 0;
+      font-size: calc(3 * var(--u));             /* 5.646px */
+      border-top: calc(0.125 * var(--u)) solid #272727;  /* hairline (0.235px) */
+    }
+    /* First item of the whole list sits under the medium divider — no extra rule. */
+    .details > .detail-list > .item:first-child { border-top: none; }
+
+    .item .k { font-weight: bold; }
+    .item .k.reg { font-weight: normal; }
+    .item.indent .k { padding-left: calc(2.5 * var(--u)); }   /* 4.71px indent */
+    .item .v { font-weight: bold; text-align: right; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <p class="hint">
+    Drag the frame's bottom-right corner handle (or resize the window). The
+    left title column stays fixed; the right details column has
+    <code>flex: 1</code> so it stretches and the values stay pinned to the
+    right edge — Figma "Fill container" behavior.
+  </p>
+
+  <div class="resizable">
+    <!-- Anchoring facts — node 2062:1176 -->
+    <section class="frame" aria-label="Anchoring facts">
+
+      <!-- Left: title column (Fixed width) -->
+      <div class="col-title">
+        <div>
+          <h1 class="title">Anchoring facts</h1>
+          <div class="divider-medium"></div>
+        </div>
+
+        <div class="serving">
+          <p class="serving-note">12 containers per artwork</p>
+          <div class="row">
+            <span>Original size</span>
+            <span>1,52x1,22 Kpx</span>
+          </div>
+          <div class="divider-thin"></div>
+        </div>
+
+        <div class="metrics">
+          <p class="boost">R<sub>0</sub> Boost Spike / Steady</p>
+          <div class="row">
+            <span class="components-label">Components</span>
+            <span class="components-value">2.3 / 1.2</span>
+          </div>
+        </div>
+
+        <div class="footer">
+          <!-- Placeholder for Figma "SM-logo" (2063:556); swap in the real asset if needed -->
+          <svg class="logo" viewBox="0 0 21 21" fill="none" aria-label="SM logo (placeholder)">
+            <rect x="0.94" y="0.94" width="19.12" height="19.12" stroke="#272727" stroke-width="1.882"/>
+            <path d="M5 14.5V6.5L8 11l3-4.5v8M13 6.5h3.5M14.75 6.5v8" stroke="#272727" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+          <div class="footnote">
+            <p>*As estimated by Vectoria institute</p>
+            <p>Vessel developed and produced by A.C.C.E.P.T.A.N.C.E. (Vectoria institute)</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: details column (Fill container — stretches) -->
+      <div class="col-details">
+        <div class="divider-medium"></div>
+
+        <div class="details">
+          <div class="detail-list">
+            <div class="item"><span class="k">Curation Mode</span><span class="v">Closed Curation</span></div>
+            <div class="item"><span class="k">Meme Propagation Method</span><span class="v">Market</span></div>
+            <div class="item"><span class="k">Anchor strength*</span><span class="v"></span></div>
+            <div class="item indent"><span class="k reg">Added Long Tail Longevity</span><span class="v">65 years</span></div>
+            <div class="item indent"><span class="k reg">Amplification probability</span><span class="v">20%</span></div>
+            <div class="item indent"><span class="k reg">Recognition decay</span><span class="v">5%</span></div>
+          </div>
+
+          <div class="group">
+            <div class="divider-big"></div>
+            <div class="item"><span class="k">SM Department</span><span class="v">Art</span></div>
+            <div class="item indent"><span class="k reg">Smiths Brothers Classification</span><span class="v">Paperclip</span></div>
+            <div class="item indent"><span class="k reg">Pavilion</span><span class="v">SALT</span></div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <!-- Live total width of the table (frame), updates on resize -->
+  <p class="width-readout">Total width: <strong id="frame-width">—</strong></p>
+
+  <script>
+    const frame = document.querySelector('.frame');
+    const out = document.getElementById('frame-width');
+    const update = () => { out.textContent = Math.round(frame.getBoundingClientRect().width) + ' px'; };
+    new ResizeObserver(update).observe(frame);  // fires on handle drag, window resize, and initial layout
+  </script>
+</body>
+</html>
