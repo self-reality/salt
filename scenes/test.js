@@ -109,6 +109,8 @@ export function runTestScene() {
         textureSelect.addEventListener('change', () => {
           setBaseTexture(textureSelect.value);
         });
+        // Apply the default-selected texture (salt-bitmap) on load
+        setBaseTexture(textureSelect.value);
       }
 
       if (originalToggle) {
