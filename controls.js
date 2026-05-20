@@ -412,6 +412,29 @@ export function setupPixelArtControls(pixelArtPass) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Stretch state get / set / reset (used by the test scene's "Show original" toggle)
+// -----------------------------------------------------------------------------
+export function getStretchValues() {
+  return {
+    x: sliderX ? parseFloat(sliderX.value) : originalWidth,
+    y: sliderY ? parseFloat(sliderY.value) : originalHeight,
+    z: sliderZ ? parseFloat(sliderZ.value) : originalDepth,
+  };
+}
+
+export function setStretchValues(width, height, depth) {
+  if (!sliderX || !sliderY || !sliderZ) return;
+  sliderX.value = String(width);
+  sliderY.value = String(height);
+  sliderZ.value = String(depth);
+  updateStretchFromUI();
+}
+
+export function resetStretch() {
+  setStretchValues(originalWidth, originalHeight, originalDepth);
+}
+
 export function setStretchYFromFactor(stretchFactor) {
   if (!stretchCanModel || !sliderY || !inputY) return;
   if (!Number.isFinite(stretchFactor) || stretchFactor <= 0) return;

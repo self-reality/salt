@@ -8,6 +8,9 @@ import {
   setupEnvironmentMap,
   setupEnvironmentControls,
   setStretchYFromFactor,
+  getStretchValues,
+  setStretchValues,
+  resetStretch,
 } from '../controls.js';
 import { loadCan } from '../lib/can.js';
 import { setupPixelArtPass } from '../lib/post-processing.js';
@@ -70,7 +73,7 @@ export function runTestScene() {
   loadCan({
     modelPath: 'bennyrizzo - 1950s-spam/source/Spam can.fbx',
     texturePath: 'bennyrizzo - 1950s-spam/textures/',
-    onLoaded({ canGroup, material, setArtwork, width, height, depth }) {
+    onLoaded({ canGroup, material, setArtwork, setBaseTexture, width, height, depth }) {
       // Wire up wireframe toggle and environment controls now that material is ready
       setupWireframeToggle(material);
       setupEnvironmentControls(renderer, scene, material);
@@ -90,6 +93,54 @@ export function runTestScene() {
         decalInput.addEventListener('change', (event) => {
           const file = event.target.files && event.target.files[0];
           if (file) setArtwork(file, setStretchYFromFactor);
+        });
+      }
+
+      // Texture picker + "Show original" toggle
+      const textureSelect = document.getElementById('base-texture');
+      const originalToggle = document.getElementById('toggle-original');
+      const stretchSliders = [
+        document.getElementById('stretch-x'),
+        document.getElementById('stretch-y'),
+        document.getElementById('stretch-z'),
+      ];
+
+      if (textureSelect) {
+        textureSelect.addEventListener('change', () => {
+          setBaseTexture(textureSelect.value);
+        });
+      }
+
+      if (originalToggle) {
+        // Remembers the user's edits while previewing the original, so the toggle is non-destructive.
+        let savedTexture = null;
+        let savedStretch = null;
+
+        const setEditingDisabled = (disabled) => {
+          if (textureSelect) textureSelect.disabled = disabled;
+          stretchSliders.forEach((slider) => {
+            if (slider) slider.disabled = disabled;
+          });
+        };
+
+        originalToggle.addEventListener('change', () => {
+          if (originalToggle.checked) {
+            savedTexture = textureSelect ? textureSelect.value : 'BaseColor.png';
+            savedStretch = getStretchValues();
+
+            setBaseTexture('BaseColor.png');
+            if (textureSelect) textureSelect.value = 'BaseColor.png';
+            resetStretch();
+
+            setEditingDisabled(true);
+          } else {
+            setEditingDisabled(false);
+
+            const texture = savedTexture || 'BaseColor.png';
+            setBaseTexture(texture);
+            if (textureSelect) textureSelect.value = texture;
+            if (savedStretch) setStretchValues(savedStretch.x, savedStretch.y, savedStretch.z);
+          }
         });
       }
     },
