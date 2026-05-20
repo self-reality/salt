@@ -57,9 +57,9 @@
 
     /* Drag the bottom-right handle to resize — the right column stretches. */
     .resizable {
-      width: 100%;
+      width: 473px;          /* default width */
       max-width: 1000px;
-      min-width: 320px;
+      min-width: 473px;      /* don't allow shrinking below the default */
       resize: horizontal;
       overflow: auto;
     }
@@ -131,7 +131,7 @@
 
     /* ---- Footer (logo + footnote) ---- */
     .footer { display: flex; align-items: center; gap: calc(0.5 * var(--u)); padding: calc(0.75 * var(--u)) 0; }
-    .logo { flex: 0 0 auto; width: calc(11 * var(--u)); height: calc(11 * var(--u)); transform: rotate(90deg); }
+    .logo { flex: 0 0 auto; width: calc(11 * var(--u)); height: calc(11 * var(--u)); object-fit: contain; display: block; transform: rotate(90deg); }
     .footnote { font-size: calc(2 * var(--u)); line-height: 1.15; }        /* 3.764px */
     .footnote p { margin: 0; }
 
@@ -194,11 +194,9 @@
         </div>
 
         <div class="footer">
-          <!-- Placeholder for Figma "SM-logo" (2063:556); swap in the real asset if needed -->
-          <svg class="logo" viewBox="0 0 21 21" fill="none" aria-label="SM logo (placeholder)">
-            <rect x="0.94" y="0.94" width="19.12" height="19.12" stroke="#272727" stroke-width="1.882"/>
-            <path d="M5 14.5V6.5L8 11l3-4.5v8M13 6.5h3.5M14.75 6.5v8" stroke="#272727" stroke-width="1.4" stroke-linejoin="round"/>
-          </svg>
+          <!-- SM-logo (Figma 2063:556) -->
+          <img class="logo" src="scenes/SM-logo-600-px.png" alt="SM logo">
+
           <div class="footnote">
             <p>*As estimated by Vectoria institute</p>
             <p>Vessel developed and produced by A.C.C.E.P.T.A.N.C.E. (Vectoria institute)</p>
