@@ -680,6 +680,53 @@
       </div>
 
       <div class="controls-group">
+        <div class="controls-section-title">Label colors</div>
+        <label>
+          Method
+          <select id="color-method">
+            <option value="dominant" selected>Dominant (median-cut)</option>
+            <option value="average">Average color</option>
+            <option value="vibrant">Most vibrant</option>
+            <option value="extremes">Light/dark extremes</option>
+          </select>
+        </label>
+        <div class="stretch-row">
+          <label for="color-sample">Sample</label>
+          <input type="range" id="color-sample" min="16" max="128" step="8" value="64" />
+          <span class="value-display" id="color-sample-value">64</span>
+        </div>
+        <div class="stretch-row">
+          <label for="color-palette">Palette</label>
+          <input type="range" id="color-palette" min="2" max="16" step="1" value="8" />
+          <span class="value-display" id="color-palette-value">8</span>
+        </div>
+        <div class="stretch-row">
+          <label for="color-saturation">Saturation</label>
+          <input type="range" id="color-saturation" min="0" max="2" step="0.05" value="1" />
+          <span class="value-display" id="color-saturation-value">1.00</span>
+        </div>
+        <div class="stretch-row">
+          <label for="color-contrast">Min contrast</label>
+          <input type="range" id="color-contrast" min="1" max="7" step="0.1" value="4.5" />
+          <span class="value-display" id="color-contrast-value">4.5</span>
+        </div>
+        <div class="stretch-row">
+          <label for="color-bg">Background</label>
+          <input type="color" id="color-bg" value="#000000" />
+        </div>
+        <div class="stretch-row">
+          <label for="color-text">Text</label>
+          <input type="color" id="color-text" value="#ffffff" />
+        </div>
+        <div class="stretch-row">
+          <label for="color-outline">Outline</label>
+          <input type="color" id="color-outline" value="#000000" />
+        </div>
+        <label><input type="checkbox" id="color-auto" checked /> Auto-derive on artwork change</label>
+        <button type="button" id="color-rederive">Re-derive from artwork</button>
+      </div>
+
+      <div class="controls-group">
         <div class="controls-section-title">View</div>
         <label><input type="checkbox" id="toggle-autorotate" /> Auto-rotate</label>
         <label><input type="checkbox" id="toggle-axes" checked /> Show axes helper</label>
