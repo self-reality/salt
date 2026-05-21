@@ -13,11 +13,11 @@ import {
   resetStretch,
 } from '../controls.js';
 import { loadCan } from '../lib/can.js';
+import { addCanOverlay } from '../lib/can-overlay.js';
 import { setupPixelArtPass } from '../lib/post-processing.js';
 import { setupPixelArtControls } from '../controls.js';
 import { buildRandomManifestFromDataset } from '../lib/dataset.js';
 import { deriveColors } from '../lib/color-extraction.js';
-import { getVibrantPalette, trioFromPalette } from '../lib/vibrant-method.js';
 
 // Same dataset the queue scene draws from — the only one carrying the
 // localFilename/width/height fields needed to load an artwork from /artworks.
@@ -111,10 +111,14 @@ export async function runTestScene() {
   // ---------------------------------------------------------------------------
   // Load can
   // ---------------------------------------------------------------------------
+  // Constant-size overlay decals (e.g. the Header) — re-glued to the surface
+  // each frame so they stay put (and the same size) while the can stretches.
+  let headerOverlay = null;
+
   loadCan({
     modelPath: 'bennyrizzo - 1950s-spam/source/Spam can.fbx',
     texturePath: 'bennyrizzo - 1950s-spam/textures/',
-    onLoaded({ canGroup, material, setArtwork, setArtworkFromUrl, setBaseTexture, clearArtwork, setLabelBackgroundColor, setOnArtworkImage, setHeaderImage, width, height, depth }) {
+    onLoaded({ canGroup, material, setArtwork, setArtworkFromUrl, setBaseTexture, clearArtwork, setLabelBackgroundColor, setOnArtworkImage, width, height, depth }) {
       // Wire up wireframe toggle and environment controls now that material is ready
       setupWireframeToggle(material);
       setupEnvironmentControls(renderer, scene, material);
@@ -122,9 +126,16 @@ export async function runTestScene() {
       configureStretchModel(canGroup, width, height, depth);
       scene.add(canGroup);
 
-      // Bake the Header onto the label with its authored colours; recolouring
-      // (below) replaces it once an artwork's palette is derived.
-      if (setHeaderImage) setHeaderImage(HEADER_SVG_PATH);
+      // Header decal, centered on the can back. Authored in 4096px texture space:
+      // center-x 2971, top-y 2004, size 764x324  ->  UV center (u, v), flipY=true.
+      headerOverlay = addCanOverlay({
+        canGroup,
+        url: 'elements/Header.svg',
+        u: 2971 / 4096,                    // 0.7251
+        v: 1 - (2004 + 324 / 2) / 4096,    // 0.4712 (center-y from the top edge)
+        wPx: 764,
+        hPx: 324,
+      });
 
       camera.position.set(0, 1, 4.5);
       controls.target.set(0, 0, 0);
@@ -252,49 +263,30 @@ export async function runTestScene() {
         minContrast: contrastSlider ? parseFloat(contrastSlider.value) : 4.5,
       });
 
-      // Derived trio (or current swatch values when no artwork yet). The
-      // node-vibrant method is async; the four built-in methods are sync.
-      const computeBase = async (settings) => {
-        if (!lastArtwork) {
-          return {
-            background: bgInput ? bgInput.value : '#000000',
-            text: textInput ? textInput.value : '#ffffff',
-            outline: outlineInput ? outlineInput.value : '#000000',
-          };
-        }
-        if (settings.method === 'vibrant-js') {
-          const palette = await getVibrantPalette(lastArtwork);
-          return trioFromPalette(palette, settings);
-        }
-        return deriveColors(lastArtwork, settings);
+      // Derived trio (or current swatch values when no artwork yet), with any
+      // manual overrides applied on top.
+      const currentTrio = () => {
+        const base = lastArtwork
+          ? deriveColors(lastArtwork, readSettings())
+          : {
+              background: bgInput ? bgInput.value : '#000000',
+              text: textInput ? textInput.value : '#ffffff',
+              outline: outlineInput ? outlineInput.value : '#000000',
+            };
+        return { ...base, ...overrides };
       };
 
       const applyCanColors = (trio) => {
         if (setLabelBackgroundColor) setLabelBackgroundColor(trio.background);
-        if (setHeaderImage && headerSvgText) {
-          setHeaderImage(svgToDataUrl(recolorHeaderSvg(headerSvgText, trio)));
+        if (headerOverlay && headerSvgText) {
+          headerOverlay.setImage(svgToDataUrl(recolorHeaderSvg(headerSvgText, trio)));
         }
         if (bgInput) bgInput.value = trio.background;
         if (textInput) textInput.value = trio.text;
         if (outlineInput) outlineInput.value = trio.outline;
       };
 
-      // Sequence guard: an async (vibrant-js) derive may resolve after a newer
-      // request, so only the latest apply is allowed to paint.
-      let applySeq = 0;
-      const apply = async () => {
-        const seq = ++applySeq;
-        const settings = readSettings();
-        let base;
-        try {
-          base = await computeBase(settings);
-        } catch (err) {
-          console.warn('Color derivation failed; falling back to dominant.', err);
-          base = lastArtwork ? deriveColors(lastArtwork, { ...settings, method: 'dominant' }) : null;
-        }
-        if (!base || seq !== applySeq) return; // superseded by a newer apply
-        applyCanColors({ ...base, ...overrides });
-      };
+      const apply = () => applyCanColors(currentTrio());
 
       // Re-derive whenever the artwork changes (if auto is enabled).
       if (setOnArtworkImage) {
@@ -378,6 +370,7 @@ export async function runTestScene() {
   function animate() {
     requestAnimationFrame(animate);
     controls.update();
+    if (headerOverlay) headerOverlay.update();
     composer.render();
   }
   animate();
