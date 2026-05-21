@@ -15,8 +15,25 @@ import {
 import { loadCan } from '../lib/can.js';
 import { setupPixelArtPass } from '../lib/post-processing.js';
 import { setupPixelArtControls } from '../controls.js';
+import { buildRandomManifestFromDataset } from '../lib/dataset.js';
 
-export function runTestScene() {
+// Same dataset the queue scene draws from — the only one carrying the
+// localFilename/width/height fields needed to load an artwork from /artworks.
+const DATASET_PATH = 'queue/most-expensive-artworks.json';
+const ARTWORK_BASE_PATH = 'artworks/';
+const ARTWORK_SAMPLE_SIZE = 10;
+
+export async function runTestScene() {
+  // Pick a handful of random queue artworks to offer in the texture picker.
+  // Fetched up-front so the <select> can be populated once the can is ready.
+  let artworkSamples = [];
+  try {
+    const dataset = await fetch(DATASET_PATH).then((r) => r.json());
+    artworkSamples = buildRandomManifestFromDataset(dataset, ARTWORK_SAMPLE_SIZE);
+  } catch (err) {
+    console.warn('Could not load artwork dataset for texture picker:', err);
+  }
+
   // ---------------------------------------------------------------------------
   // Renderer
   // ---------------------------------------------------------------------------
@@ -73,7 +90,7 @@ export function runTestScene() {
   loadCan({
     modelPath: 'bennyrizzo - 1950s-spam/source/Spam can.fbx',
     texturePath: 'bennyrizzo - 1950s-spam/textures/',
-    onLoaded({ canGroup, material, setArtwork, setBaseTexture, width, height, depth }) {
+    onLoaded({ canGroup, material, setArtwork, setArtworkFromUrl, setBaseTexture, width, height, depth }) {
       // Wire up wireframe toggle and environment controls now that material is ready
       setupWireframeToggle(material);
       setupEnvironmentControls(renderer, scene, material);
@@ -105,12 +122,41 @@ export function runTestScene() {
         document.getElementById('stretch-z'),
       ];
 
+      // Offer the random queue artworks alongside the base textures. Selecting
+      // one composites it onto the label band and stretches the can to the
+      // artwork's aspect ratio — the same resize logic the queue scene applies.
+      const artworkByValue = new Map();
+      if (textureSelect && artworkSamples.length) {
+        const group = document.createElement('optgroup');
+        group.label = 'Artworks (queue)';
+        artworkSamples.forEach((item, i) => {
+          const value = `artwork:${i}`;
+          artworkByValue.set(value, item);
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = `${item.username} — ${item.name}`;
+          group.appendChild(option);
+        });
+        textureSelect.appendChild(group);
+      }
+
+      // Applies a dropdown selection: an artwork composites onto the label and
+      // resizes the can, while any other value swaps the base color texture.
+      function applySelection(value) {
+        const artwork = artworkByValue.get(value);
+        if (artwork) {
+          setArtworkFromUrl(ARTWORK_BASE_PATH + artwork.filename, setStretchYFromFactor);
+        } else {
+          setBaseTexture(value);
+        }
+      }
+
       if (textureSelect) {
         textureSelect.addEventListener('change', () => {
-          setBaseTexture(textureSelect.value);
+          applySelection(textureSelect.value);
         });
         // Apply the default-selected texture (salt-bitmap) on load
-        setBaseTexture(textureSelect.value);
+        applySelection(textureSelect.value);
       }
 
       if (originalToggle) {
@@ -139,7 +185,7 @@ export function runTestScene() {
             setEditingDisabled(false);
 
             const texture = savedTexture || 'BaseColor.png';
-            setBaseTexture(texture);
+            applySelection(texture);
             if (textureSelect) textureSelect.value = texture;
             if (savedStretch) setStretchValues(savedStretch.x, savedStretch.y, savedStretch.z);
           }
