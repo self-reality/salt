@@ -13,6 +13,7 @@ import {
   resetStretch,
 } from '../controls.js';
 import { loadCan } from '../lib/can.js';
+import { addCanOverlay } from '../lib/can-overlay.js';
 import { setupPixelArtPass } from '../lib/post-processing.js';
 import { setupPixelArtControls } from '../controls.js';
 import { buildRandomManifestFromDataset } from '../lib/dataset.js';
@@ -87,6 +88,10 @@ export async function runTestScene() {
   // ---------------------------------------------------------------------------
   // Load can
   // ---------------------------------------------------------------------------
+  // Constant-size overlay decals (e.g. the Header) — re-glued to the surface
+  // each frame so they stay put (and the same size) while the can stretches.
+  let headerOverlay = null;
+
   loadCan({
     modelPath: 'bennyrizzo - 1950s-spam/source/Spam can.fbx',
     texturePath: 'bennyrizzo - 1950s-spam/textures/',
@@ -97,6 +102,17 @@ export async function runTestScene() {
 
       configureStretchModel(canGroup, width, height, depth);
       scene.add(canGroup);
+
+      // Header decal, centered on the can back. Authored in 4096px texture space:
+      // center-x 2971, top-y 2004, size 764x324  ->  UV center (u, v), flipY=true.
+      headerOverlay = addCanOverlay({
+        canGroup,
+        url: 'elements/Header.svg',
+        u: 2971 / 4096,                    // 0.7251
+        v: 1 - (2004 + 324 / 2) / 4096,    // 0.4712 (center-y from the top edge)
+        wPx: 764,
+        hPx: 324,
+      });
 
       camera.position.set(0, 1, 4.5);
       controls.target.set(0, 0, 0);
@@ -242,6 +258,7 @@ export async function runTestScene() {
   function animate() {
     requestAnimationFrame(animate);
     controls.update();
+    if (headerOverlay) headerOverlay.update();
     composer.render();
   }
   animate();
