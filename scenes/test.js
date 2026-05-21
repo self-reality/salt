@@ -90,7 +90,7 @@ export async function runTestScene() {
   loadCan({
     modelPath: 'bennyrizzo - 1950s-spam/source/Spam can.fbx',
     texturePath: 'bennyrizzo - 1950s-spam/textures/',
-    onLoaded({ canGroup, material, setArtwork, setArtworkFromUrl, setBaseTexture, width, height, depth }) {
+    onLoaded({ canGroup, material, setArtwork, setArtworkFromUrl, setBaseTexture, clearArtwork, width, height, depth }) {
       // Wire up wireframe toggle and environment controls now that material is ready
       setupWireframeToggle(material);
       setupEnvironmentControls(renderer, scene, material);
@@ -141,12 +141,15 @@ export async function runTestScene() {
       }
 
       // Applies a dropdown selection: an artwork composites onto the label and
-      // resizes the can, while any other value swaps the base color texture.
+      // resizes the can; a base texture clears any artwork and restores the
+      // can's original (un-stretched) shape before swapping the base color.
       function applySelection(value) {
         const artwork = artworkByValue.get(value);
         if (artwork) {
           setArtworkFromUrl(ARTWORK_BASE_PATH + artwork.filename, setStretchYFromFactor);
         } else {
+          clearArtwork();
+          resetStretch();
           setBaseTexture(value);
         }
       }
@@ -176,6 +179,7 @@ export async function runTestScene() {
             savedTexture = textureSelect ? textureSelect.value : 'BaseColor.png';
             savedStretch = getStretchValues();
 
+            clearArtwork();
             setBaseTexture('BaseColor.png');
             if (textureSelect) textureSelect.value = 'BaseColor.png';
             resetStretch();
