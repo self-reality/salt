@@ -187,6 +187,8 @@
       padding: 0.25rem 0.5rem;
       cursor: pointer;
     }
+    .artwork-nav { display: flex; gap: 0.35rem; }
+    .artwork-nav button { flex: 1; }
     .controls-group {
       display: flex;
       flex-direction: column;
@@ -677,6 +679,10 @@
             <option value="salt-bitmap.png" selected>salt-bitmap (yours)</option>
           </select>
         </label>
+        <div class="artwork-nav">
+          <button type="button" id="texture-prev" aria-label="Previous texture" title="Previous texture">◀ Prev</button>
+          <button type="button" id="texture-next" aria-label="Next texture" title="Next texture">Next ▶</button>
+        </div>
         <label><input type="checkbox" id="toggle-original" /> Show original</label>
       </div>
 

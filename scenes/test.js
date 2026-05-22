@@ -162,6 +162,24 @@ export async function runTestScene() {
         applySelection(textureSelect.value);
       }
 
+      // Prev/Next arrows step through the texture dropdown (incl. the queue
+      // artworks) and apply each selection — same cycling as the label builder.
+      function cycleTexture(dir) {
+        if (!textureSelect) return;
+        const count = textureSelect.options.length;
+        if (count <= 1) return;
+        let i = textureSelect.selectedIndex + dir;
+        if (i < 0) i = count - 1;        // wrap past the first option
+        else if (i > count - 1) i = 0;   // wrap past the last
+        textureSelect.selectedIndex = i;
+        applySelection(textureSelect.value);
+      }
+
+      const texturePrev = document.getElementById('texture-prev');
+      const textureNext = document.getElementById('texture-next');
+      if (texturePrev) texturePrev.addEventListener('click', () => cycleTexture(-1));
+      if (textureNext) textureNext.addEventListener('click', () => cycleTexture(1));
+
       if (originalToggle) {
         // Remembers the user's edits while previewing the original, so the toggle is non-destructive.
         let savedTexture = null;
@@ -169,6 +187,8 @@ export async function runTestScene() {
 
         const setEditingDisabled = (disabled) => {
           if (textureSelect) textureSelect.disabled = disabled;
+          if (texturePrev) texturePrev.disabled = disabled;
+          if (textureNext) textureNext.disabled = disabled;
           stretchSliders.forEach((slider) => {
             if (slider) slider.disabled = disabled;
           });
