@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Label texture builder</title>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #f4f4f4; }
+
+    body {
+      display: flex;
+      flex-direction: row;
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #333;
+    }
+
+    /* ---- Texture stage (fills the window width left of the panel) ---- */
+    #texture-stage {
+      flex: 1 1 auto;
+      min-width: 0;
+      height: 100%;
+      overflow: auto;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    #canvas-wrap {
+      position: relative;
+      width: 100%;
+      /* a faint checker so a transparent/edge of the band is visible */
+      background:
+        repeating-conic-gradient(#e9e9e9 0% 25%, #f7f7f7 0% 50%) 0 / 24px 24px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.15);
+    }
+    #canvas-wrap canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    /* The draggable bottom edge — analog of the can's Y dimension. */
+    #resize-handle {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -7px;
+      height: 14px;
+      cursor: ns-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+    }
+    #resize-handle::before {
+      content: '';
+      width: 64px;
+      height: 6px;
+      border-radius: 3px;
+      background: #2b6cff;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.85);
+    }
+    #stage-readout {
+      font-size: 0.8rem;
+      opacity: 0.7;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---- Control panel (copied from index.html, made a static column) ---- */
+    .controls-panel {
+      flex: 0 0 300px;
+      height: 100%;
+      overflow-y: auto;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      font-size: 0.9rem;
+      color: #333;
+      background: #ffffff;
+      padding: 1rem;
+      border-left: 1px solid #e3e3e3;
+    }
+    .controls-panel-header { margin-bottom: 0.25rem; }
+    .controls-panel-header-title { font-weight: 600; font-size: 1rem; }
+    .controls-panel label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      white-space: nowrap;
+    }
+    .controls-panel input[type="file"] { font-size: 0.85rem; min-width: 0; }
+    .controls-panel select { flex: 1; min-width: 0; }
+    .controls-panel button {
+      font-size: 0.85rem;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+    }
+    .controls-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid #eee;
+    }
+    .controls-section-title {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .controls-section-title::after { content: '▾'; font-size: 0.8rem; opacity: 0.7; }
+    .controls-group.collapsed .controls-section-title::after { content: '▸'; }
+    .controls-group.collapsed > :not(.controls-section-title) { display: none; }
+    .stretch-row { display: flex; align-items: center; gap: 0.5rem; }
+    .stretch-row label { min-width: 4.2rem; }
+    .stretch-row input[type="range"] { flex: 1; min-width: 0; }
+    .stretch-row input[type="number"] {
+      width: 4.6rem;
+      padding: 0.1rem 0.25rem;
+      font-size: 0.85rem;
+    }
+    .value-display {
+      min-width: 3.2rem;
+      text-align: right;
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.8;
+    }
+    .hint { font-size: 0.8rem; opacity: 0.7; white-space: normal; }
+  </style>
+</head>
+<body>
+  <div id="texture-stage">
+    <div id="canvas-wrap">
+      <!-- the builder's <canvas> is inserted here, before the handle -->
+      <div id="resize-handle" title="Drag to resize the label height"></div>
+    </div>
+    <div id="stage-readout"></div>
+  </div>
+
+  <div id="controls-panel" class="controls-panel">
+    <div class="controls-panel-header">
+      <span class="controls-panel-header-title">Label texture</span>
+    </div>
+
+    <div class="controls-group">
+      <div class="controls-section-title">Artwork</div>
+      <label>
+        Image
+        <input type="file" id="decal-file" accept="image/*" />
+      </label>
+      <label>
+        Queue
+        <select id="artwork-select"></select>
+      </label>
+      <button type="button" id="artwork-shuffle">Shuffle artworks</button>
+    </div>
+
+    <div class="controls-group">
+      <div class="controls-section-title">Label colors</div>
+      <label>
+        Method
+        <select id="color-method">
+          <option value="dominant" selected>Dominant (median-cut)</option>
+          <option value="average">Average color</option>
+          <option value="vibrant">Most vibrant</option>
+          <option value="extremes">Light/dark extremes</option>
+          <option value="vibrant-js">Vibrant.js (node-vibrant)</option>
+        </select>
+      </label>
+      <div class="stretch-row">
+        <label for="color-sample">Sample</label>
+        <input type="range" id="color-sample" min="16" max="128" step="8" value="64" />
+        <span class="value-display" id="color-sample-value">64</span>
+      </div>
+      <div class="stretch-row">
+        <label for="color-palette">Palette</label>
+        <input type="range" id="color-palette" min="2" max="16" step="1" value="8" />
+        <span class="value-display" id="color-palette-value">8</span>
+      </div>
+      <div class="stretch-row">
+        <label for="color-saturation">Saturation</label>
+        <input type="range" id="color-saturation" min="0" max="2" step="0.05" value="1" />
+        <span class="value-display" id="color-saturation-value">1.00</span>
+      </div>
+      <div class="stretch-row">
+        <label for="color-contrast">Min contrast</label>
+        <input type="range" id="color-contrast" min="1" max="7" step="0.1" value="4.5" />
+        <span class="value-display" id="color-contrast-value">4.5</span>
+      </div>
+      <div class="stretch-row">
+        <label for="color-bg">Background</label>
+        <input type="color" id="color-bg" value="#000000" />
+      </div>
+      <div class="stretch-row">
+        <label for="color-text">Text</label>
+        <input type="color" id="color-text" value="#ffffff" />
+      </div>
+      <div class="stretch-row">
+        <label for="color-outline">Outline</label>
+        <input type="color" id="color-outline" value="#000000" />
+      </div>
+      <label><input type="checkbox" id="color-auto" checked /> Auto-derive on artwork change</label>
+      <button type="button" id="color-rederive">Re-derive from artwork</button>
+    </div>
+
+    <div class="controls-group">
+      <div class="controls-section-title">Label size</div>
+      <div class="stretch-row">
+        <label for="band-height">Height</label>
+        <input type="number" id="band-height" min="200" max="4000" step="1" value="1032" />
+        <span class="value-display">px</span>
+      </div>
+      <div class="hint">Drag the bottom edge of the label to resize it — the analog of changing the can's Y dimension. The band is 4096&nbsp;px wide, 2008&nbsp;px down from the texture top.</div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "node-vibrant/browser": "https://esm.sh/node-vibrant@4.0.4/browser"
+    }
+  }
+  </script>
+  <script type="module" src="label.js"></script>
+</body>
+</html>

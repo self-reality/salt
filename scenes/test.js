@@ -13,31 +13,15 @@ import {
   resetStretch,
 } from '../controls.js';
 import { loadCan } from '../lib/can.js';
-import { addCanOverlay } from '../lib/can-overlay.js';
 import { setupPixelArtPass } from '../lib/post-processing.js';
 import { setupPixelArtControls } from '../controls.js';
 import { buildRandomManifestFromDataset } from '../lib/dataset.js';
-import { deriveColors } from '../lib/color-extraction.js';
 
 // Same dataset the queue scene draws from — the only one carrying the
 // localFilename/width/height fields needed to load an artwork from /artworks.
 const DATASET_PATH = 'queue/most-expensive-artworks.json';
 const ARTWORK_BASE_PATH = 'artworks/';
 const ARTWORK_SAMPLE_SIZE = 10;
-const HEADER_SVG_PATH = 'elements/Header.svg';
-
-// The Header.svg authored colours, mapped to the derived trio. #574BA6 is used
-// twice: the pill rects (background) and the masked outline path — the latter is
-// matched first by its `mask=` attribute so the two roles stay distinct.
-function recolorHeaderSvg(svg, { background, text, outline }) {
-  return svg
-    .replace(/fill="#574BA6"(\s+mask="url\([^"]*\)")/gi, `fill="${outline}"$1`)
-    .replace(/fill="#574BA6"/gi, `fill="${background}"`)
-    .replace(/fill="#F2C335"/gi, `fill="${text}"`);
-}
-
-const svgToDataUrl = (svg) =>
-  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
 export async function runTestScene() {
   // Pick a handful of random queue artworks to offer in the texture picker.
@@ -48,14 +32,6 @@ export async function runTestScene() {
     artworkSamples = buildRandomManifestFromDataset(dataset, ARTWORK_SAMPLE_SIZE);
   } catch (err) {
     console.warn('Could not load artwork dataset for texture picker:', err);
-  }
-
-  // Header SVG source, fetched once so we can recolour it per-artwork.
-  let headerSvgText = null;
-  try {
-    headerSvgText = await fetch(HEADER_SVG_PATH).then((r) => r.text());
-  } catch (err) {
-    console.warn('Could not load Header.svg for recolouring:', err);
   }
 
   // ---------------------------------------------------------------------------
@@ -111,31 +87,16 @@ export async function runTestScene() {
   // ---------------------------------------------------------------------------
   // Load can
   // ---------------------------------------------------------------------------
-  // Constant-size overlay decals (e.g. the Header) — re-glued to the surface
-  // each frame so they stay put (and the same size) while the can stretches.
-  let headerOverlay = null;
-
   loadCan({
     modelPath: 'bennyrizzo - 1950s-spam/source/Spam can.fbx',
     texturePath: 'bennyrizzo - 1950s-spam/textures/',
-    onLoaded({ canGroup, material, setArtwork, setArtworkFromUrl, setBaseTexture, clearArtwork, setLabelBackgroundColor, setOnArtworkImage, width, height, depth }) {
+    onLoaded({ canGroup, material, setArtwork, setArtworkFromUrl, setBaseTexture, clearArtwork, width, height, depth }) {
       // Wire up wireframe toggle and environment controls now that material is ready
       setupWireframeToggle(material);
       setupEnvironmentControls(renderer, scene, material);
 
       configureStretchModel(canGroup, width, height, depth);
       scene.add(canGroup);
-
-      // Header decal, centered on the can back. Authored in 4096px texture space:
-      // center-x 2971, top-y 2004, size 764x324  ->  UV center (u, v), flipY=true.
-      headerOverlay = addCanOverlay({
-        canGroup,
-        url: 'elements/Header.svg',
-        u: 2971 / 4096,                    // 0.7251
-        v: 1 - (2004 + 324 / 2) / 4096,    // 0.4712 (center-y from the top edge)
-        wPx: 764,
-        hPx: 324,
-      });
 
       camera.position.set(0, 1, 4.5);
       controls.target.set(0, 0, 0);
@@ -235,94 +196,6 @@ export async function runTestScene() {
         });
       }
 
-      // -----------------------------------------------------------------------
-      // Label colours: derive a {background, text, outline} trio from the
-      // loaded artwork, paint the band background with it, and recolour the
-      // header overlay. Manual swatch edits override the derived value until
-      // "Re-derive" is clicked.
-      // -----------------------------------------------------------------------
-      const methodSelect = document.getElementById('color-method');
-      const sampleSlider = document.getElementById('color-sample');
-      const paletteSlider = document.getElementById('color-palette');
-      const saturationSlider = document.getElementById('color-saturation');
-      const contrastSlider = document.getElementById('color-contrast');
-      const bgInput = document.getElementById('color-bg');
-      const textInput = document.getElementById('color-text');
-      const outlineInput = document.getElementById('color-outline');
-      const autoCheckbox = document.getElementById('color-auto');
-      const rederiveBtn = document.getElementById('color-rederive');
-
-      let lastArtwork = null;
-      const overrides = {}; // manual swatch edits: { background?, text?, outline? }
-
-      const readSettings = () => ({
-        method: methodSelect ? methodSelect.value : 'dominant',
-        sampleSize: sampleSlider ? parseInt(sampleSlider.value, 10) : 64,
-        paletteSize: paletteSlider ? parseInt(paletteSlider.value, 10) : 8,
-        saturation: saturationSlider ? parseFloat(saturationSlider.value) : 1,
-        minContrast: contrastSlider ? parseFloat(contrastSlider.value) : 4.5,
-      });
-
-      // Derived trio (or current swatch values when no artwork yet), with any
-      // manual overrides applied on top.
-      const currentTrio = () => {
-        const base = lastArtwork
-          ? deriveColors(lastArtwork, readSettings())
-          : {
-              background: bgInput ? bgInput.value : '#000000',
-              text: textInput ? textInput.value : '#ffffff',
-              outline: outlineInput ? outlineInput.value : '#000000',
-            };
-        return { ...base, ...overrides };
-      };
-
-      const applyCanColors = (trio) => {
-        if (setLabelBackgroundColor) setLabelBackgroundColor(trio.background);
-        if (headerOverlay && headerSvgText) {
-          headerOverlay.setImage(svgToDataUrl(recolorHeaderSvg(headerSvgText, trio)));
-        }
-        if (bgInput) bgInput.value = trio.background;
-        if (textInput) textInput.value = trio.text;
-        if (outlineInput) outlineInput.value = trio.outline;
-      };
-
-      const apply = () => applyCanColors(currentTrio());
-
-      // Re-derive whenever the artwork changes (if auto is enabled).
-      if (setOnArtworkImage) {
-        setOnArtworkImage((img) => {
-          lastArtwork = img;
-          if (!autoCheckbox || autoCheckbox.checked) apply();
-        });
-      }
-
-      // Method + settings: re-derive live and keep the value displays in sync.
-      const bindSlider = (slider, fmt) => {
-        if (!slider) return;
-        const valueEl = document.getElementById(`${slider.id}-value`);
-        const sync = () => { if (valueEl) valueEl.textContent = fmt(slider.value); };
-        sync();
-        slider.addEventListener('input', () => { sync(); apply(); });
-      };
-      bindSlider(sampleSlider, (v) => String(parseInt(v, 10)));
-      bindSlider(paletteSlider, (v) => String(parseInt(v, 10)));
-      bindSlider(saturationSlider, (v) => parseFloat(v).toFixed(2));
-      bindSlider(contrastSlider, (v) => parseFloat(v).toFixed(1));
-      if (methodSelect) methodSelect.addEventListener('change', apply);
-
-      // Manual swatch edits become overrides until "Re-derive" clears them.
-      if (bgInput) bgInput.addEventListener('input', () => { overrides.background = bgInput.value; apply(); });
-      if (textInput) textInput.addEventListener('input', () => { overrides.text = textInput.value; apply(); });
-      if (outlineInput) outlineInput.addEventListener('input', () => { overrides.outline = outlineInput.value; apply(); });
-
-      if (rederiveBtn) {
-        rederiveBtn.addEventListener('click', () => {
-          delete overrides.background;
-          delete overrides.text;
-          delete overrides.outline;
-          apply();
-        });
-      }
     },
   });
 
@@ -370,7 +243,6 @@ export async function runTestScene() {
   function animate() {
     requestAnimationFrame(animate);
     controls.update();
-    if (headerOverlay) headerOverlay.update();
     composer.render();
   }
   animate();
