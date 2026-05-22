@@ -233,6 +233,8 @@ async function main() {
 
   const artworkSelect = document.getElementById('artwork-select');
   const shuffleBtn = document.getElementById('artwork-shuffle');
+  const prevBtn = document.getElementById('artwork-prev');
+  const nextBtn = document.getElementById('artwork-next');
 
   function populateArtworks() {
     if (!artworkSelect) return [];
@@ -257,6 +259,24 @@ async function main() {
     });
   }
   if (shuffleBtn) shuffleBtn.addEventListener('click', () => populateArtworks());
+
+  // Step the queue selection by one, skipping the placeholder at index 0 and
+  // wrapping around the ends. dir is -1 (prev) or +1 (next).
+  function cycleArtwork(dir) {
+    if (!artworkSelect) return;
+    const count = artworkSelect.options.length;
+    if (count <= 1) return; // only the placeholder is present
+    let i = artworkSelect.selectedIndex;
+    if (i < 1) i = dir > 0 ? 0 : 1; // from placeholder, step into the real range
+    i += dir;
+    if (i < 1) i = count - 1;      // wrap past the first real option
+    else if (i > count - 1) i = 1; // wrap past the last
+    artworkSelect.selectedIndex = i;
+    if (artworkSelect.value) loadArtworkFromUrl(artworkSelect.value);
+  }
+
+  if (prevBtn) prevBtn.addEventListener('click', () => cycleArtwork(-1));
+  if (nextBtn) nextBtn.addEventListener('click', () => cycleArtwork(1));
 
   // ---- Collapsible section headers (mirrors the 3D panel behaviour) ---------
   document.querySelectorAll('.controls-group .controls-section-title').forEach((title) => {

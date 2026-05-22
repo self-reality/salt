@@ -97,6 +97,8 @@
       padding: 0.25rem 0.5rem;
       cursor: pointer;
     }
+    .artwork-nav { display: flex; gap: 0.35rem; }
+    .artwork-nav button { flex: 1; }
     .controls-group {
       display: flex;
       flex-direction: column;
@@ -157,6 +159,10 @@
         Queue
         <select id="artwork-select"></select>
       </label>
+      <div class="artwork-nav">
+        <button type="button" id="artwork-prev" aria-label="Previous artwork" title="Previous artwork">◀ Prev</button>
+        <button type="button" id="artwork-next" aria-label="Next artwork" title="Next artwork">Next ▶</button>
+      </div>
       <button type="button" id="artwork-shuffle">Shuffle artworks</button>
     </div>
 
