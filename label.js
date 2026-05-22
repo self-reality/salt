@@ -21,13 +21,13 @@ import {
 // localFilename/width/height fields needed to load an artwork from /artworks.
 const DATASET_PATH = 'queue/most-expensive-artworks.json';
 const ARTWORK_BASE_PATH = 'artworks/';
-const HEADER_SVG_PATH = 'elements/Header.svg';
+const DECAL_SVG_PATH = 'elements/Decal.svg';
 const ARTWORK_SAMPLE_SIZE = 12;
 const MIN_BAND = 200;
 const MAX_BAND = 4000;
 
 async function main() {
-  // ---- Up-front fetches: random artwork pool + the header source -----------
+  // ---- Up-front fetches: random artwork pool + the decal source ------------
   let dataset = [];
   try {
     dataset = await fetch(DATASET_PATH).then((r) => r.json());
@@ -35,16 +35,16 @@ async function main() {
     console.warn('label: could not load artwork dataset', err);
   }
 
-  let headerSvgText = null;
+  let decalSvgText = null;
   try {
-    headerSvgText = await fetch(HEADER_SVG_PATH).then((r) => r.text());
+    decalSvgText = await fetch(DECAL_SVG_PATH).then((r) => r.text());
   } catch (err) {
-    console.warn('label: could not load Header.svg', err);
+    console.warn('label: could not load Decal.svg', err);
   }
 
   // ---- Builder + on-screen canvas ------------------------------------------
   const builder = createLabelTexture();
-  if (headerSvgText) builder.setHeaderSvg(headerSvgText);
+  if (decalSvgText) builder.setDecalSvg(decalSvgText);
 
   const wrap = document.getElementById('canvas-wrap');
   const handle = document.getElementById('resize-handle');
@@ -292,7 +292,7 @@ async function main() {
     artworkSelect.selectedIndex = 1; // index 0 is the placeholder
     loadArtworkFromUrl(artworkSelect.value);
   } else {
-    apply(); // no artwork: still paint the band + header with default colours
+    apply(); // no artwork: still paint the band + decal with default colours
   }
 }
 
