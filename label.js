@@ -76,6 +76,7 @@ async function main() {
   const hueShiftSlider = document.getElementById('color-hueshift');
   const bgSwatchSelect = document.getElementById('color-bg-swatch');
   const textSwatchSelect = document.getElementById('color-text-swatch');
+  const outlineSwatchSelect = document.getElementById('color-outline-swatch');
   const saturationSlider = document.getElementById('color-saturation');
   const contrastSlider = document.getElementById('color-contrast');
   const bgInput = document.getElementById('color-bg');
@@ -95,6 +96,7 @@ async function main() {
     hueShift: hueShiftSlider ? parseFloat(hueShiftSlider.value) : 180,
     bgSwatch: bgSwatchSelect ? bgSwatchSelect.value : 'auto',
     textSwatch: textSwatchSelect ? textSwatchSelect.value : 'auto',
+    outlineSwatch: outlineSwatchSelect ? outlineSwatchSelect.value : 'auto',
     saturation: saturationSlider ? parseFloat(saturationSlider.value) : 1,
     minContrast: contrastSlider ? parseFloat(contrastSlider.value) : 4.5,
   });
@@ -124,6 +126,7 @@ async function main() {
           minContrast: settings.minContrast,
           bgSwatch: settings.bgSwatch,
           textSwatch: settings.textSwatch,
+          outlineSwatch: settings.outlineSwatch,
         });
       } catch (err) {
         console.warn('label: Vibrant.js unavailable, falling back to dominant', err);
@@ -161,6 +164,7 @@ async function main() {
   bindSlider(contrastSlider, (v) => parseFloat(v).toFixed(1));
   if (bgSwatchSelect) bgSwatchSelect.addEventListener('change', apply);
   if (textSwatchSelect) textSwatchSelect.addEventListener('change', apply);
+  if (outlineSwatchSelect) outlineSwatchSelect.addEventListener('change', apply);
 
   // Each method consumes a different subset of the controls, so only the relevant
   // ones are shown. Saturation + min-contrast feed the shared finalize pass and
@@ -173,7 +177,7 @@ async function main() {
   const METHOD_SETTINGS = {
     dominant: ['sample', 'palette', 'vividness', 'saturation', 'contrast'],
     average: ['sample', 'hueshift', 'saturation', 'contrast'],
-    'vibrant-js': ['bgswatch', 'textswatch', 'saturation', 'contrast'],
+    'vibrant-js': ['bgswatch', 'textswatch', 'outlineswatch', 'saturation', 'contrast'],
   };
   const settingControls = {
     sample: sampleSlider,
@@ -182,6 +186,7 @@ async function main() {
     hueshift: hueShiftSlider,
     bgswatch: bgSwatchSelect,
     textswatch: textSwatchSelect,
+    outlineswatch: outlineSwatchSelect,
     saturation: saturationSlider,
     contrast: contrastSlider,
   };
