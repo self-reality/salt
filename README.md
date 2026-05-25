@@ -33,3 +33,5 @@ The scene is chosen by the `?scene=` query parameter. **If `?scene` is omitted (
 ## Label builder
 
 `label.html` (driven by `label.js`) is a standalone, no-THREE page for developing the label-band texture in isolation. Open **http://localhost:8000/label.html** to pick an artwork, derive label colours, and drag the band height; the 3D scenes import `lib/label-texture.js` to render the same texture.
+
+The builder composites the Decal from its individual element SVGs in `elements/svg elements/` (header, Smiths blurb, Anchoring-facts table, logo medallion, footer pill, datamatrix, …), each recoloured to the palette and placed as an *anchored layer* — so as the artwork-driven band height changes, every element holds its shape instead of stretching. Each element's anchor (`top` / `bottom` / `center` / `stretch`) is set in the `LAYERS` manifest in `lib/label-texture.js`, derived by diffing the two reference heights `elements/Decal-1.svg` (4096×1032) and `elements/Decal-2.svg` (4096×1690).

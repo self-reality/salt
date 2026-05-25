@@ -12,6 +12,7 @@ import { buildRandomManifestFromDataset } from './lib/dataset.js';
 import {
   createLabelTexture,
   bandHeightForArtwork,
+  ELEMENT_FILES,
   TEX_WIDTH,
   BAND_TOP,
   DEFAULT_BAND_HEIGHT,
@@ -21,7 +22,7 @@ import {
 // localFilename/width/height fields needed to load an artwork from /artworks.
 const DATASET_PATH = 'queue/most-expensive-artworks.json';
 const ARTWORK_BASE_PATH = 'artworks/';
-const DECAL_SVG_PATH = 'elements/Decal.svg';
+const ELEMENTS_BASE_PATH = 'elements/svg elements/';
 const ARTWORK_SAMPLE_SIZE = 12;
 const MIN_BAND = 200;
 const MAX_BAND = 4000;
@@ -35,16 +36,24 @@ async function main() {
     console.warn('label: could not load artwork dataset', err);
   }
 
-  let decalSvgText = null;
+  // Each Decal element is its own SVG, composited as an anchored layer by the
+  // builder. Fetch them all up front, keyed by filename for setElements().
+  let elementSvgs = {};
   try {
-    decalSvgText = await fetch(DECAL_SVG_PATH).then((r) => r.text());
+    const entries = await Promise.all(
+      ELEMENT_FILES.map(async (file) => [
+        file,
+        await fetch(ELEMENTS_BASE_PATH + encodeURIComponent(file)).then((r) => r.text()),
+      ]),
+    );
+    elementSvgs = Object.fromEntries(entries);
   } catch (err) {
-    console.warn('label: could not load Decal.svg', err);
+    console.warn('label: could not load decal element SVGs', err);
   }
 
   // ---- Builder + on-screen canvas ------------------------------------------
   const builder = createLabelTexture();
-  if (decalSvgText) builder.setDecalSvg(decalSvgText);
+  builder.setElements(elementSvgs);
 
   const wrap = document.getElementById('canvas-wrap');
   const handle = document.getElementById('resize-handle');
