@@ -147,7 +147,36 @@ async function main() {
   bindSlider(paletteSlider, (v) => String(parseInt(v, 10)));
   bindSlider(saturationSlider, (v) => parseFloat(v).toFixed(2));
   bindSlider(contrastSlider, (v) => parseFloat(v).toFixed(1));
-  if (methodSelect) methodSelect.addEventListener('change', apply);
+
+  // Each method consumes a different subset of the sliders, so only the relevant
+  // ones are shown. Saturation + min-contrast feed the shared finalize pass and
+  // apply to every method. "Sample" (offscreen sampling resolution) is used by
+  // the two offline pixel-reading methods; "Palette" (median-cut buckets) only
+  // by dominant. node-vibrant does its own sampling and quantisation, so it
+  // shows neither.
+  const METHOD_SETTINGS = {
+    dominant: ['sample', 'palette', 'saturation', 'contrast'],
+    average: ['sample', 'saturation', 'contrast'],
+    'vibrant-js': ['saturation', 'contrast'],
+  };
+  const settingSliders = {
+    sample: sampleSlider,
+    palette: paletteSlider,
+    saturation: saturationSlider,
+    contrast: contrastSlider,
+  };
+  const syncMethodSettings = () => {
+    const method = methodSelect ? methodSelect.value : 'dominant';
+    const applicable = METHOD_SETTINGS[method] || METHOD_SETTINGS.dominant;
+    for (const [key, slider] of Object.entries(settingSliders)) {
+      const row = slider && slider.closest('.stretch-row');
+      // Inline style (not the `hidden` attr) so it overrides .stretch-row's
+      // `display: flex` from the stylesheet.
+      if (row) row.style.display = applicable.includes(key) ? '' : 'none';
+    }
+  };
+  syncMethodSettings();
+  if (methodSelect) methodSelect.addEventListener('change', () => { syncMethodSettings(); apply(); });
 
   // Manual swatch edits become overrides until "Re-derive" clears them.
   if (bgInput) bgInput.addEventListener('input', () => { overrides.background = bgInput.value; apply(); });
