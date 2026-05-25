@@ -37,19 +37,20 @@ async function main() {
   }
 
   // Each Decal element is its own SVG, composited as an anchored layer by the
-  // builder. Fetch them all up front, keyed by filename for setElements().
-  let elementSvgs = {};
-  try {
-    const entries = await Promise.all(
-      ELEMENT_FILES.map(async (file) => [
-        file,
-        await fetch(ELEMENTS_BASE_PATH + encodeURIComponent(file)).then((r) => r.text()),
-      ]),
-    );
-    elementSvgs = Object.fromEntries(entries);
-  } catch (err) {
-    console.warn('label: could not load decal element SVGs', err);
-  }
+  // builder. Fetch them independently so one missing file can't blank the whole
+  // decal — whatever loads gets composited; failures are logged by name.
+  const elementSvgs = {};
+  await Promise.all(
+    ELEMENT_FILES.map(async (file) => {
+      try {
+        const res = await fetch(ELEMENTS_BASE_PATH + encodeURIComponent(file));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        elementSvgs[file] = await res.text();
+      } catch (err) {
+        console.warn(`label: could not load decal element "${file}"`, err);
+      }
+    }),
+  );
 
   // ---- Builder + on-screen canvas ------------------------------------------
   const builder = createLabelTexture();
