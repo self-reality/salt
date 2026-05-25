@@ -29,3 +29,7 @@ The scene is chosen by the `?scene=` query parameter. **If `?scene` is omitted (
 | _(none)_ or `van-can` | `http://localhost:8000/` | **Default.** Spam can flying out of an apocalyptic van, cycling through artworks; layout adapts between wide and narrow viewports. |
 | `queue-1` | `http://localhost:8000/?scene=queue-1` | Full-screen can that cycles rapidly through artworks. |
 | `test` | `http://localhost:8000/?scene=test` | Full controls UI for tweaking lighting, stretch, and the pixel-art effect. |
+
+## Label builder
+
+`label.html` (driven by `label.js`) is a standalone, no-THREE page for developing the label-band texture in isolation. Open **http://localhost:8000/label.html** to pick an artwork, derive label colours, and drag the band height; the 3D scenes import `lib/label-texture.js` to render the same texture.
