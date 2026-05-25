@@ -72,6 +72,10 @@ async function main() {
   const methodSelect = document.getElementById('color-method');
   const sampleSlider = document.getElementById('color-sample');
   const paletteSlider = document.getElementById('color-palette');
+  const vividnessSlider = document.getElementById('color-vividness');
+  const hueShiftSlider = document.getElementById('color-hueshift');
+  const bgSwatchSelect = document.getElementById('color-bg-swatch');
+  const textSwatchSelect = document.getElementById('color-text-swatch');
   const saturationSlider = document.getElementById('color-saturation');
   const contrastSlider = document.getElementById('color-contrast');
   const bgInput = document.getElementById('color-bg');
@@ -87,6 +91,10 @@ async function main() {
     method: methodSelect ? methodSelect.value : 'dominant',
     sampleSize: sampleSlider ? parseInt(sampleSlider.value, 10) : 64,
     paletteSize: paletteSlider ? parseInt(paletteSlider.value, 10) : 8,
+    vividness: vividnessSlider ? parseFloat(vividnessSlider.value) : 2.5,
+    hueShift: hueShiftSlider ? parseFloat(hueShiftSlider.value) : 180,
+    bgSwatch: bgSwatchSelect ? bgSwatchSelect.value : 'auto',
+    textSwatch: textSwatchSelect ? textSwatchSelect.value : 'auto',
     saturation: saturationSlider ? parseFloat(saturationSlider.value) : 1,
     minContrast: contrastSlider ? parseFloat(contrastSlider.value) : 4.5,
   });
@@ -114,6 +122,8 @@ async function main() {
         return await deriveColorsVibrant(lastArtwork, {
           saturation: settings.saturation,
           minContrast: settings.minContrast,
+          bgSwatch: settings.bgSwatch,
+          textSwatch: settings.textSwatch,
         });
       } catch (err) {
         console.warn('label: Vibrant.js unavailable, falling back to dominant', err);
@@ -145,31 +155,41 @@ async function main() {
   };
   bindSlider(sampleSlider, (v) => String(parseInt(v, 10)));
   bindSlider(paletteSlider, (v) => String(parseInt(v, 10)));
+  bindSlider(vividnessSlider, (v) => parseFloat(v).toFixed(1));
+  bindSlider(hueShiftSlider, (v) => `${parseInt(v, 10)}°`);
   bindSlider(saturationSlider, (v) => parseFloat(v).toFixed(2));
   bindSlider(contrastSlider, (v) => parseFloat(v).toFixed(1));
+  if (bgSwatchSelect) bgSwatchSelect.addEventListener('change', apply);
+  if (textSwatchSelect) textSwatchSelect.addEventListener('change', apply);
 
-  // Each method consumes a different subset of the sliders, so only the relevant
+  // Each method consumes a different subset of the controls, so only the relevant
   // ones are shown. Saturation + min-contrast feed the shared finalize pass and
-  // apply to every method. "Sample" (offscreen sampling resolution) is used by
-  // the two offline pixel-reading methods; "Palette" (median-cut buckets) only
-  // by dominant. node-vibrant does its own sampling and quantisation, so it
-  // shows neither.
+  // apply to every method. The rest are method-specific: "sample" (offscreen
+  // sampling resolution) drives the two offline pixel-reading methods; "palette"
+  // (median-cut buckets) and "vividness" (text contrast↔saturation bias) are
+  // dominant-only; "hueshift" (text hue rotation) is average-only; the swatch
+  // dropdowns pick node-vibrant's named swatches. node-vibrant does its own
+  // sampling and quantisation, so it shows neither sample nor palette.
   const METHOD_SETTINGS = {
-    dominant: ['sample', 'palette', 'saturation', 'contrast'],
-    average: ['sample', 'saturation', 'contrast'],
-    'vibrant-js': ['saturation', 'contrast'],
+    dominant: ['sample', 'palette', 'vividness', 'saturation', 'contrast'],
+    average: ['sample', 'hueshift', 'saturation', 'contrast'],
+    'vibrant-js': ['bgswatch', 'textswatch', 'saturation', 'contrast'],
   };
-  const settingSliders = {
+  const settingControls = {
     sample: sampleSlider,
     palette: paletteSlider,
+    vividness: vividnessSlider,
+    hueshift: hueShiftSlider,
+    bgswatch: bgSwatchSelect,
+    textswatch: textSwatchSelect,
     saturation: saturationSlider,
     contrast: contrastSlider,
   };
   const syncMethodSettings = () => {
     const method = methodSelect ? methodSelect.value : 'dominant';
     const applicable = METHOD_SETTINGS[method] || METHOD_SETTINGS.dominant;
-    for (const [key, slider] of Object.entries(settingSliders)) {
-      const row = slider && slider.closest('.stretch-row');
+    for (const [key, control] of Object.entries(settingControls)) {
+      const row = control && control.closest('.stretch-row');
       // Inline style (not the `hidden` attr) so it overrides .stretch-row's
       // `display: flex` from the stylesheet.
       if (row) row.style.display = applicable.includes(key) ? '' : 'none';
