@@ -22,11 +22,10 @@ After the server is running, open the given URL in your browser to view the 3D S
 
 ## Scenes
 
-The scene is chosen by the `?scene=` query parameter. **If `?scene` is omitted (or set to an unrecognized value), the `landing` scene is shown by default.**
+The scene is chosen by the `?scene=` query parameter. **If `?scene` is omitted (or set to an unrecognized value), the `van-can` scene is shown by default.**
 
 | `?scene` value | URL | Description |
 |----------------|-----|-------------|
-| _(none)_ or `landing` | `http://localhost:8000/` | **Default.** Scrollable landing page with the auto-rotating Spam can behind the content, cycling through artworks. |
+| _(none)_ or `van-can` | `http://localhost:8000/` | **Default.** Spam can flying out of an apocalyptic van, cycling through artworks; layout adapts between wide and narrow viewports. |
 | `queue-1` | `http://localhost:8000/?scene=queue-1` | Full-screen can that cycles rapidly through artworks. |
-| `van-can` | `http://localhost:8000/?scene=van-can` | Spam can flying out of an apocalyptic van, cycling through artworks; layout adapts between wide and narrow viewports. |
 | `test` | `http://localhost:8000/?scene=test` | Full controls UI for tweaking lighting, stretch, and the pixel-art effect. |

@@ -244,7 +244,7 @@ function applyVanMaterials(root, materials) {
 // ---------------------------------------------------------------------------
 export async function runVanCanScene() {
   // Hide DOM elements only used by other scenes.
-  for (const id of ['controls-panel', 'landing-header', 'landing-page', 'landing-artwork-info']) {
+  for (const id of ['controls-panel']) {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   }
