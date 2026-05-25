@@ -130,7 +130,20 @@
 
     /* ---- Footer (logo + footnote) ---- */
     .footer { display: flex; align-items: center; gap: calc(0.5 * var(--u)); padding: calc(0.75 * var(--u)) 0; }
-    .logo { flex: 0 0 auto; width: calc(11 * var(--u)); height: calc(11 * var(--u)); object-fit: contain; display: block; transform: rotate(90deg); }
+    /* The logo is painted as a solid ink rectangle masked by the PNG's alpha, so
+       the #272727 -> text swap tints it like the rest of the table (a raster
+       <img> can't follow that). JS sets mask-image to the inlined logo data URL. */
+    .logo {
+      flex: 0 0 auto;
+      width: calc(11 * var(--u));
+      height: calc(11 * var(--u));
+      display: block;
+      transform: rotate(90deg);
+      background-color: #272727;
+      -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+      -webkit-mask-position: center;  mask-position: center;
+      -webkit-mask-size: contain;     mask-size: contain;
+    }
     .footnote { font-size: calc(2 * var(--u)); line-height: 1.15; }        /* 3.764px */
     .footnote p { margin: 0; }
 
@@ -193,8 +206,8 @@
         </div>
 
         <div class="footer">
-          <!-- SM-logo (Figma 2063:556) -->
-          <img class="logo" src="SM-logo-600-px.png" alt="SM logo">
+          <!-- SM-logo (Figma 2063:556) — tinted via CSS mask; src set by anchoring-facts.js -->
+          <div class="logo" role="img" aria-label="SM logo"></div>
 
           <div class="footnote">
             <p>*As estimated by Vectoria institute</p>
