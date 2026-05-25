@@ -130,9 +130,10 @@
 
     /* ---- Footer (logo + footnote) ---- */
     .footer { display: flex; align-items: center; gap: calc(0.5 * var(--u)); padding: calc(0.75 * var(--u)) 0; }
-    /* The logo is painted as a solid ink rectangle masked by the PNG's alpha, so
-       the #272727 -> text swap tints it like the rest of the table (a raster
-       <img> can't follow that). JS sets mask-image to the inlined logo data URL. */
+    /* The logo is painted as a solid ink rectangle masked by the PNG's alpha (a
+       raster <img> can't be recoloured). Its background-color is the table's
+       #272727 ink, which render() forces to black — so the logo matches the panel.
+       JS sets mask-image to the inlined logo data URL. */
     .logo {
       flex: 0 0 auto;
       width: calc(11 * var(--u));
