@@ -84,9 +84,38 @@ async function main() {
   const outlineInput = document.getElementById('color-outline');
   const autoCheckbox = document.getElementById('color-auto');
   const rederiveBtn = document.getElementById('color-rederive');
+  const statusEl = document.getElementById('color-status');
 
   let lastArtwork = null;
   const overrides = {}; // manual swatch edits: { background?, text?, outline? }
+
+  const setColorStatus = (msg) => {
+    if (!statusEl) return;
+    statusEl.textContent = msg || '';
+    statusEl.hidden = !msg;
+  };
+
+  // Every method reads the artwork's pixels through a canvas; a file:// page or
+  // cross-origin artwork taints that canvas so getImageData throws, and EVERY
+  // method then silently falls back to a black/white trio (looking identical).
+  // Probe once per image so we can say so plainly instead of leaving it a
+  // mystery. Cached because apply() also fires on every slider drag.
+  let taintCheckedImg = null, taintCheckedOk = true;
+  const canSampleImage = (img) => {
+    if (img === taintCheckedImg) return taintCheckedOk;
+    taintCheckedImg = img;
+    try {
+      const c = document.createElement('canvas');
+      c.width = c.height = 1;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, 1, 1);
+      ctx.getImageData(0, 0, 1, 1);
+      taintCheckedOk = true;
+    } catch (_) {
+      taintCheckedOk = false;
+    }
+    return taintCheckedOk;
+  };
 
   const readSettings = () => ({
     method: methodSelect ? methodSelect.value : 'dominant',
@@ -109,7 +138,11 @@ async function main() {
 
   // Derived trio from the artwork (or current swatch values when no artwork
   // yet). node-vibrant ('vibrant-js') is async; the other methods are sync.
+  // Sets deriveWarning when the Vibrant path throws and we fall back to dominant,
+  // so apply() can surface it instead of the fallback masquerading as Dominant.
+  let deriveWarning = '';
   async function baseTrio() {
+    deriveWarning = '';
     if (!lastArtwork) {
       return {
         background: bgInput ? bgInput.value : '#000000',
@@ -130,6 +163,7 @@ async function main() {
         });
       } catch (err) {
         console.warn('label: Vibrant.js unavailable, falling back to dominant', err);
+        deriveWarning = `⚠ Vibrant.js failed — showing Dominant instead. ${err && err.message ? err.message : err}`;
         return deriveColors(lastArtwork, { ...settings, method: 'dominant' });
       }
     }
@@ -140,6 +174,11 @@ async function main() {
   let applyToken = 0;
   async function apply() {
     const token = ++applyToken;
+    // Tainted-canvas check first: it explains all methods collapsing to the same
+    // black/white result, and outranks the Vibrant-specific warning.
+    const taintWarning = lastArtwork && !canSampleImage(lastArtwork)
+      ? '⚠ Can’t read this image’s pixels (page on file:// or cross-origin artwork). Every method falls back to black/white — serve the page over http://localhost.'
+      : '';
     const base = await baseTrio();
     if (token !== applyToken) return;
     const trio = { ...base, ...overrides };
@@ -147,6 +186,7 @@ async function main() {
     if (bgInput) bgInput.value = trio.background;
     if (textInput) textInput.value = trio.text;
     if (outlineInput) outlineInput.value = trio.outline;
+    setColorStatus(taintWarning || deriveWarning);
   }
 
   const bindSlider = (slider, fmt) => {
