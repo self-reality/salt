@@ -29,6 +29,12 @@ import {
   DEFAULT_PRESERVED_TEXT,
   DEFAULT_TITLE_TEXT,
 } from './lib/side-text.js';
+import {
+  injectStampText,
+  STAMP_FILE,
+  DEFAULT_STAMP_VALUE,
+  DEFAULT_STAMP_UNIT,
+} from './lib/stamp.js';
 
 // Same dataset the queue/test scenes draw from — the only one carrying the
 // localFilename/width/height fields needed to load an artwork from /artworks.
@@ -74,10 +80,16 @@ async function main() {
 
   // Override the static Barcode.svg + the two path-baked side-text SVGs with
   // freshly-generated ones so the initial paint matches the side-panel inputs.
+  // Stamp.svg ships without its lower text block — inject it here from the
+  // value/unit inputs (the "NET WT" header is baked in by lib/stamp.js).
   const barcodeInput = document.getElementById('barcode-text');
   const titleInput = document.getElementById('title-text');
+  const stampValueInput = document.getElementById('stamp-value');
+  const stampUnitInput = document.getElementById('stamp-unit');
   const initialBarcode = (barcodeInput && barcodeInput.value) || DEFAULT_BARCODE_VALUE;
   const initialTitle = (titleInput && titleInput.value) || DEFAULT_TITLE_TEXT;
+  const initialStampValue = (stampValueInput && stampValueInput.value) || DEFAULT_STAMP_VALUE;
+  const initialStampUnit = (stampUnitInput && stampUnitInput.value) || DEFAULT_STAMP_UNIT;
   elementSvgs['Barcode.svg'] = generateBarcodeSvg(initialBarcode);
   elementSvgs[PRESERVED_FILE] = generateSideTextSvg(
     DEFAULT_PRESERVED_TEXT, PRESERVED_FRAME, pacificoDataUrl,
@@ -85,6 +97,9 @@ async function main() {
   elementSvgs[TITLE_FILE] = generateSideTextSvg(
     initialTitle, TITLE_FRAME, pacificoDataUrl,
   );
+  // Keep the bare Stamp.svg around — re-injection on every edit reads from it.
+  const baseStampSvg = elementSvgs[STAMP_FILE] || '';
+  elementSvgs[STAMP_FILE] = injectStampText(baseStampSvg, initialStampValue, initialStampUnit);
   builder.setElements(elementSvgs);
 
   if (barcodeInput) {
@@ -100,6 +115,13 @@ async function main() {
       );
     });
   }
+  const rebuildStamp = () => {
+    const value = stampValueInput ? stampValueInput.value : initialStampValue;
+    const unit = stampUnitInput ? stampUnitInput.value : initialStampUnit;
+    builder.setElement(STAMP_FILE, injectStampText(baseStampSvg, value, unit));
+  };
+  if (stampValueInput) stampValueInput.addEventListener('input', rebuildStamp);
+  if (stampUnitInput) stampUnitInput.addEventListener('input', rebuildStamp);
 
   // Smiths description — the long passage that wraps the can vertically, lives
   // as live HTML inside the builder. Seed the textarea with the default so the
