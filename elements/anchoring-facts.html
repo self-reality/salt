@@ -28,6 +28,15 @@
     .hint { font-size: 13px; color: #6b7280; max-width: 60ch; }
     .hint code { background: #d6d8db; padding: 1px 5px; border-radius: 4px; }
 
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      font-size: 13px;
+      color: #272727;
+    }
+    .toolbar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+
     /* Canvas wrapper. The wrapper's CSS width is the table's natural width
        (1 css px ↔ 1 canvas px); a right-edge handle drags that width. */
     #wrap {
@@ -38,7 +47,69 @@
       height: 416px;
       box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
     }
-    #wrap canvas {
+
+    /* Inspect-style dev overlays — ruler across the top edge plus dashed
+       brackets naming the left and right columns. Sit above the canvas so
+       they're visible while debugging; toggled off via the #wrap class. */
+    #ruler {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 18px;
+      z-index: 3;
+      pointer-events: none;
+      background: rgba(20, 24, 30, 0.82);
+    }
+    #col-brackets {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 18px;
+      height: 22px;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .col-bracket {
+      position: absolute;
+      top: 0;
+      height: 22px;
+      border-left: 1px dashed #2b6cff;
+      border-right: 1px dashed #2b6cff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .col-bracket > span {
+      font: 11px/1 Helvetica, Arial, sans-serif;
+      color: #2b6cff;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid #2b6cff;
+    }
+    /* Short dashed verticals dropping into the canvas from each column edge —
+       like Chrome's inspect alignment ticks. */
+    #col-ticks {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 40px;
+      height: 18px;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .v-tick {
+      position: absolute;
+      top: 0;
+      width: 0;
+      height: 100%;
+      border-left: 1px dashed rgba(43, 108, 255, 0.7);
+    }
+    #wrap:not(.show-guides) #ruler,
+    #wrap:not(.show-guides) #col-brackets,
+    #wrap:not(.show-guides) #col-ticks { display: none; }
+    #cv {
       display: block;
       width: 100%;
       height: 100%;
@@ -46,6 +117,7 @@
       background:
         repeating-conic-gradient(#e9e9e9 0% 25%, #f7f7f7 0% 50%) 0 / 24px 24px;
     }
+    #ruler { display: block; }
     #handle {
       position: absolute;
       top: 0;
@@ -79,8 +151,22 @@
     <code>label.html</code> and the WebGL textures without canvas taint.
   </p>
 
-  <div id="wrap">
+  <div class="toolbar">
+    <label><input type="checkbox" id="toggle-guides" checked> Show inspect guides (ruler + column names)</label>
+  </div>
+
+  <div id="wrap" class="show-guides">
     <canvas id="cv"></canvas>
+    <canvas id="ruler"></canvas>
+    <div id="col-brackets">
+      <div class="col-bracket" id="bracket-left"><span>Left column</span></div>
+      <div class="col-bracket" id="bracket-right"><span>Right column</span></div>
+    </div>
+    <div id="col-ticks">
+      <div class="v-tick" id="tick-left-start"></div>
+      <div class="v-tick" id="tick-divider"></div>
+      <div class="v-tick" id="tick-right-end"></div>
+    </div>
     <div id="handle" title="Drag to resize the table width"></div>
   </div>
 
@@ -95,6 +181,57 @@
     const readout = document.getElementById('readout');
     const ctx     = display.getContext('2d');
 
+    const rulerCv      = document.getElementById('ruler');
+    const rulerCtx     = rulerCv.getContext('2d');
+    const bracketLeft  = document.getElementById('bracket-left');
+    const bracketRight = document.getElementById('bracket-right');
+    const tickStart    = document.getElementById('tick-left-start');
+    const tickDivider  = document.getElementById('tick-divider');
+    const tickEnd      = document.getElementById('tick-right-end');
+    const toggle       = document.getElementById('toggle-guides');
+
+    toggle.addEventListener('change', () => {
+      wrap.classList.toggle('show-guides', toggle.checked);
+    });
+
+    // Horizontal pixel ruler painted onto its own canvas. Ticks every 10 px,
+    // labelled every 50 px. Redrawn whenever `length` changes.
+    function paintRuler(L) {
+      const dpr = window.devicePixelRatio || 1;
+      const h = 18;
+      rulerCv.width  = L * dpr;
+      rulerCv.height = h * dpr;
+      rulerCv.style.width  = L + 'px';
+      rulerCv.style.height = h + 'px';
+      rulerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      rulerCtx.clearRect(0, 0, L, h);
+      rulerCtx.strokeStyle = 'rgba(207, 210, 214, 0.95)';
+      rulerCtx.fillStyle   = 'rgba(207, 210, 214, 0.95)';
+      rulerCtx.lineWidth = 1;
+      rulerCtx.font = '9px Helvetica, Arial, sans-serif';
+      rulerCtx.textBaseline = 'top';
+      for (let x = 0; x <= L; x += 10) {
+        const major = x % 50 === 0;
+        const tickH = major ? 8 : 4;
+        rulerCtx.beginPath();
+        rulerCtx.moveTo(x + 0.5, h - tickH);
+        rulerCtx.lineTo(x + 0.5, h);
+        rulerCtx.stroke();
+        if (major && x > 0 && x < L) rulerCtx.fillText(String(x), x + 2, 2);
+      }
+    }
+
+    function positionGuides(L) {
+      const lay = renderer.getLayout(L);
+      bracketLeft.style.left  = '0px';
+      bracketLeft.style.width = lay.colDivider + 'px';
+      bracketRight.style.left  = lay.colDivider + 'px';
+      bracketRight.style.width = (L - lay.colDivider) + 'px';
+      tickStart.style.left   = lay.leftColStart + 'px';
+      tickDivider.style.left = lay.colDivider + 'px';
+      tickEnd.style.left     = lay.rightColEnd + 'px';
+    }
+
     // Logo sits next to this page (elements/SM-logo-600-px.png), so basePath
     // is empty — fetched relative to elements/anchoring-facts.html.
     const renderer = createAnchoringFacts({ basePath: '' });
@@ -108,6 +245,8 @@
         display.height = src.height;
         ctx.drawImage(src, 0, 0);
         readout.textContent = `${src.width} × ${src.height} px`;
+        paintRuler(length);
+        positionGuides(length);
       });
     }
     // Coalesce drag-driven renders to one per frame.
