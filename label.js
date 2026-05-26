@@ -40,6 +40,11 @@ import {
   DATAMATRIX_FILE,
   DEFAULT_DATAMATRIX_VALUE,
 } from './lib/datamatrix.js';
+import {
+  CIRCLE_FILE,
+  loadAvatarDataUrl,
+  injectCircleAvatar,
+} from './lib/circle-avatar.js';
 
 // Same dataset the queue/test scenes draw from — the only one carrying the
 // localFilename/width/height fields needed to load an artwork from /artworks.
@@ -125,6 +130,9 @@ async function main() {
   // Keep the bare Stamp.svg around — re-injection on every edit reads from it.
   const baseStampSvg = elementSvgs[STAMP_FILE] || '';
   elementSvgs[STAMP_FILE] = injectStampText(baseStampSvg, initialStampValue, initialStampUnit);
+  // Same pattern for Circle.svg: cache the placeholder version, then re-inject
+  // each new artwork's author avatar by xlink:href swap.
+  const baseCircleSvg = elementSvgs[CIRCLE_FILE] || '';
   builder.setElements(elementSvgs);
   // Preserved's yTop is constant (text top pinned at OUTER_PAD); title's yTop
   // tracks its dynamic SVG height so the text bottom stays at H − OUTER_PAD.
@@ -390,14 +398,37 @@ async function main() {
       const option = document.createElement('option');
       option.value = ARTWORK_BASE_PATH + item.filename;
       option.textContent = `${item.username} — ${item.name}`;
+      // Stash the author's avatar URL on the option so the Circle.svg injector
+      // can find it on selection without re-scanning the dataset.
+      if (item.avatar) option.dataset.avatar = item.avatar;
       artworkSelect.appendChild(option);
     });
     return samples;
   }
 
+  // Re-rasterise Circle.svg with the given avatar URL embedded. A stale-token
+  // guard keeps a slow fetch from clobbering a later, faster selection.
+  let circleAvatarToken = 0;
+  function setAvatar(url) {
+    const token = ++circleAvatarToken;
+    loadAvatarDataUrl(url).then((dataUrl) => {
+      if (token !== circleAvatarToken) return;
+      builder.setElement(CIRCLE_FILE, injectCircleAvatar(baseCircleSvg, dataUrl));
+    });
+  }
+
+  function avatarForSelectedOption() {
+    if (!artworkSelect) return null;
+    const opt = artworkSelect.options[artworkSelect.selectedIndex];
+    return (opt && opt.dataset.avatar) || null;
+  }
+
   if (artworkSelect) {
     artworkSelect.addEventListener('change', () => {
-      if (artworkSelect.value) loadArtworkFromUrl(artworkSelect.value);
+      if (artworkSelect.value) {
+        loadArtworkFromUrl(artworkSelect.value);
+        setAvatar(avatarForSelectedOption());
+      }
     });
   }
   if (shuffleBtn) shuffleBtn.addEventListener('click', () => populateArtworks());
@@ -414,7 +445,10 @@ async function main() {
     if (i < 1) i = count - 1;      // wrap past the first real option
     else if (i > count - 1) i = 1; // wrap past the last
     artworkSelect.selectedIndex = i;
-    if (artworkSelect.value) loadArtworkFromUrl(artworkSelect.value);
+    if (artworkSelect.value) {
+      loadArtworkFromUrl(artworkSelect.value);
+      setAvatar(avatarForSelectedOption());
+    }
   }
 
   if (prevBtn) prevBtn.addEventListener('click', () => cycleArtwork(-1));
@@ -433,6 +467,7 @@ async function main() {
   if (samples.length && artworkSelect) {
     artworkSelect.selectedIndex = 1; // index 0 is the placeholder
     loadArtworkFromUrl(artworkSelect.value);
+    setAvatar(avatarForSelectedOption());
   } else {
     apply(); // no artwork: still paint the band + decal with default colours
   }
