@@ -22,8 +22,8 @@ import { generateBarcodeSvg, DEFAULT_BARCODE_VALUE } from './lib/barcode.js';
 import {
   generateSideTextSvg,
   loadPacificoDataUrl,
-  PRESERVED_FRAME,
-  TITLE_FRAME,
+  computeSideLayout,
+  SIDE_FRAME_WIDTH,
   PRESERVED_FILE,
   TITLE_FILE,
   DEFAULT_PRESERVED_TEXT,
@@ -91,16 +91,35 @@ async function main() {
   const initialStampValue = (stampValueInput && stampValueInput.value) || DEFAULT_STAMP_VALUE;
   const initialStampUnit = (stampUnitInput && stampUnitInput.value) || DEFAULT_STAMP_UNIT;
   elementSvgs['Barcode.svg'] = generateBarcodeSvg(initialBarcode);
-  elementSvgs[PRESERVED_FILE] = generateSideTextSvg(
-    DEFAULT_PRESERVED_TEXT, PRESERVED_FRAME, pacificoDataUrl,
-  );
-  elementSvgs[TITLE_FILE] = generateSideTextSvg(
-    initialTitle, TITLE_FRAME, pacificoDataUrl,
-  );
+
+  // Side text: pick a shared font size + per-SVG heights that fit "preserved"
+  // and the title in the side column with at least a 2-char gap; if a long
+  // title would close that gap, both fonts shrink together.
+  const sideLayoutFor = (titleText) => {
+    const layout = computeSideLayout(titleText);
+    const preservedSvg = generateSideTextSvg(
+      DEFAULT_PRESERVED_TEXT,
+      { width: SIDE_FRAME_WIDTH, height: layout.preservedHeight, fontSize: layout.fontSize },
+      pacificoDataUrl,
+    );
+    const titleSvg = generateSideTextSvg(
+      titleText,
+      { width: SIDE_FRAME_WIDTH, height: layout.titleHeight, fontSize: layout.fontSize },
+      pacificoDataUrl,
+    );
+    return { layout, preservedSvg, titleSvg };
+  };
+  const initialSide = sideLayoutFor(initialTitle);
+  elementSvgs[PRESERVED_FILE] = initialSide.preservedSvg;
+  elementSvgs[TITLE_FILE] = initialSide.titleSvg;
   // Keep the bare Stamp.svg around — re-injection on every edit reads from it.
   const baseStampSvg = elementSvgs[STAMP_FILE] || '';
   elementSvgs[STAMP_FILE] = injectStampText(baseStampSvg, initialStampValue, initialStampUnit);
   builder.setElements(elementSvgs);
+  // Title is bottom-anchored; its yTop moves with its dynamic SVG height so
+  // the bottom edge stays pinned. Set after setElements so the seeded yTop
+  // matches the initial title raster.
+  builder.setLayerYTop(TITLE_FILE, initialSide.layout.titleYTop);
 
   if (barcodeInput) {
     barcodeInput.addEventListener('input', () => {
@@ -109,10 +128,11 @@ async function main() {
   }
   if (titleInput) {
     titleInput.addEventListener('input', () => {
-      builder.setElement(
-        TITLE_FILE,
-        generateSideTextSvg(titleInput.value, TITLE_FRAME, pacificoDataUrl),
-      );
+      const { layout, preservedSvg, titleSvg } = sideLayoutFor(titleInput.value);
+      builder.setLayerYTop(TITLE_FILE, layout.titleYTop);
+      // Re-raster both side elements: a long title shrinks both fonts equally.
+      builder.setElement(PRESERVED_FILE, preservedSvg);
+      builder.setElement(TITLE_FILE, titleSvg);
     });
   }
   const rebuildStamp = () => {
