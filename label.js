@@ -93,10 +93,11 @@ async function main() {
   elementSvgs['Barcode.svg'] = generateBarcodeSvg(initialBarcode);
 
   // Side text: pick a shared font size + per-SVG heights that fit "preserved"
-  // and the title in the side column with at least a 2-char gap; if a long
-  // title would close that gap, both fonts shrink together.
-  const sideLayoutFor = (titleText) => {
-    const layout = computeSideLayout(titleText);
+  // and the title in the band-height column (OUTER_PAD | preserved | MIN_GAP |
+  // title | OUTER_PAD = bandHeight). The block width is the live band height,
+  // so the layout follows the slider — sideLayoutFor takes the current value.
+  const sideLayoutFor = (titleText, bandHeight) => {
+    const layout = computeSideLayout(titleText, bandHeight);
     const preservedSvg = generateSideTextSvg(
       DEFAULT_PRESERVED_TEXT,
       { width: SIDE_FRAME_WIDTH, height: layout.preservedHeight, fontSize: layout.fontSize },
@@ -109,35 +110,37 @@ async function main() {
     );
     return { layout, preservedSvg, titleSvg };
   };
-  const initialSide = sideLayoutFor(initialTitle);
+  const initialSide = sideLayoutFor(initialTitle, builder.bandHeight);
   elementSvgs[PRESERVED_FILE] = initialSide.preservedSvg;
   elementSvgs[TITLE_FILE] = initialSide.titleSvg;
   // Keep the bare Stamp.svg around — re-injection on every edit reads from it.
   const baseStampSvg = elementSvgs[STAMP_FILE] || '';
   elementSvgs[STAMP_FILE] = injectStampText(baseStampSvg, initialStampValue, initialStampUnit);
   builder.setElements(elementSvgs);
-  // The side labels live in a 933 px column: OUTER_PAD | preserved | MIN_GAP |
-  // title | OUTER_PAD. Preserved's yTop is constant (text top pinned); title's
-  // yTop tracks its dynamic SVG height so the text bottom stays pinned.
+  // Preserved's yTop is constant (text top pinned at OUTER_PAD); title's yTop
+  // tracks its dynamic SVG height so the text bottom stays at H − OUTER_PAD.
   builder.setLayerYTop(PRESERVED_FILE, initialSide.layout.preservedYTop);
   builder.setLayerYTop(TITLE_FILE, initialSide.layout.titleYTop);
+
+  // Re-layout both side labels for the current title + current band height.
+  // Called on title keystroke and on every band-height change so the column
+  // formula 50 + preserved + 15 + title + 50 = bandHeight stays satisfied.
+  const rebuildSideText = () => {
+    const titleText = titleInput ? titleInput.value : DEFAULT_TITLE_TEXT;
+    const { layout, preservedSvg, titleSvg } =
+      sideLayoutFor(titleText, builder.bandHeight);
+    builder.setLayerYTop(PRESERVED_FILE, layout.preservedYTop);
+    builder.setLayerYTop(TITLE_FILE, layout.titleYTop);
+    builder.setElement(PRESERVED_FILE, preservedSvg);
+    builder.setElement(TITLE_FILE, titleSvg);
+  };
 
   if (barcodeInput) {
     barcodeInput.addEventListener('input', () => {
       builder.setElement('Barcode.svg', generateBarcodeSvg(barcodeInput.value));
     });
   }
-  if (titleInput) {
-    titleInput.addEventListener('input', () => {
-      const { layout, preservedSvg, titleSvg } = sideLayoutFor(titleInput.value);
-      builder.setLayerYTop(TITLE_FILE, layout.titleYTop);
-      // Re-raster both side elements: a long title shrinks both fonts equally.
-      builder.setElement(PRESERVED_FILE, preservedSvg);
-      builder.setElement(TITLE_FILE, titleSvg);
-    });
-  }
-  // preservedYTop is constant per-spec, so it only needs setting once at init
-  // (above). The title's yTop is dynamic and re-applied on every keystroke.
+  if (titleInput) titleInput.addEventListener('input', rebuildSideText);
   const rebuildStamp = () => {
     const value = stampValueInput ? stampValueInput.value : initialStampValue;
     const unit = stampUnitInput ? stampUnitInput.value : initialStampUnit;
@@ -280,6 +283,10 @@ async function main() {
     builder.setBandHeight(clamped);
     if (syncInput && bandInput) bandInput.value = String(clamped);
     updateReadout();
+    // Block width = bandHeight: the side-text font size + layer positions both
+    // depend on it, so re-lay-out whenever the band height changes (slider
+    // drag, numeric input, or auto-fit when a new artwork loads).
+    rebuildSideText();
     return clamped;
   }
 
