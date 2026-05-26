@@ -16,6 +16,7 @@ import {
   TEX_WIDTH,
   BAND_TOP,
   DEFAULT_BAND_HEIGHT,
+  DEFAULT_SMITHS_TEXT,
 } from './lib/label-texture.js';
 import { generateBarcodeSvg, DEFAULT_BARCODE_VALUE } from './lib/barcode.js';
 import {
@@ -97,6 +98,17 @@ async function main() {
         TITLE_FILE,
         generateSideTextSvg(titleInput.value, TITLE_FRAME, pacificoDataUrl),
       );
+    });
+  }
+
+  // Smiths description — the long passage that wraps the can vertically, lives
+  // as live HTML inside the builder. Seed the textarea with the default so the
+  // panel shows what's painted; pipe edits straight back into the builder.
+  const smithsInput = document.getElementById('smiths-text');
+  if (smithsInput) {
+    smithsInput.value = DEFAULT_SMITHS_TEXT;
+    smithsInput.addEventListener('input', () => {
+      builder.setSmithsText(smithsInput.value);
     });
   }
 

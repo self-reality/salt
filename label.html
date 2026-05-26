@@ -131,6 +131,16 @@
       padding: 0.1rem 0.25rem;
       font-size: 0.85rem;
     }
+    .stretch-col { display: flex; flex-direction: column; gap: 0.25rem; }
+    .stretch-col textarea {
+      width: 100%;
+      min-height: 11rem;
+      padding: 0.35rem 0.5rem;
+      font: inherit;
+      font-size: 0.8rem;
+      line-height: 1.35;
+      resize: vertical;
+    }
     .value-display {
       min-width: 3.2rem;
       text-align: right;
@@ -184,6 +194,10 @@
         <input type="text" id="barcode-text" value="2029-135531" spellcheck="false" />
       </div>
       <div class="hint">Code 128 Set B (printable ASCII).</div>
+      <div class="stretch-col">
+        <label for="smiths-text">Description</label>
+        <textarea id="smiths-text" spellcheck="false"></textarea>
+      </div>
     </div>
 
     <div class="controls-group">
