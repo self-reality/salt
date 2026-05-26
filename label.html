@@ -172,23 +172,25 @@
       <label>
         Method
         <select id="color-method">
-          <option value="average" selected>Average color</option>
+          <option value="dominant" selected>Dominant (median-cut)</option>
+          <option value="average">Average color</option>
+          <option value="vibrant-js">Vibrant.js (node-vibrant)</option>
         </select>
       </label>
       <div class="stretch-row">
         <label for="color-sample">Sample</label>
-        <input type="range" id="color-sample" min="16" max="128" step="8" value="128" />
-        <span class="value-display" id="color-sample-value">128</span>
+        <input type="range" id="color-sample" min="16" max="128" step="8" value="64" />
+        <span class="value-display" id="color-sample-value">64</span>
       </div>
       <div class="stretch-row">
         <label for="color-palette">Palette</label>
-        <input type="range" id="color-palette" min="2" max="16" step="1" value="16" />
-        <span class="value-display" id="color-palette-value">16</span>
+        <input type="range" id="color-palette" min="2" max="16" step="1" value="8" />
+        <span class="value-display" id="color-palette-value">8</span>
       </div>
       <div class="stretch-row">
         <label for="color-vividness">Vividness</label>
-        <input type="range" id="color-vividness" min="0" max="8" step="0.5" value="8" />
-        <span class="value-display" id="color-vividness-value">8.0</span>
+        <input type="range" id="color-vividness" min="0" max="8" step="0.5" value="2.5" />
+        <span class="value-display" id="color-vividness-value">2.5</span>
       </div>
       <div class="stretch-row">
         <label for="color-hueshift">Hue shift</label>
@@ -196,14 +198,50 @@
         <span class="value-display" id="color-hueshift-value">180°</span>
       </div>
       <div class="stretch-row">
+        <label for="color-bg-swatch">Bg swatch</label>
+        <select id="color-bg-swatch">
+          <option value="auto" selected>Auto</option>
+          <option value="Vibrant">Vibrant</option>
+          <option value="LightVibrant">Light Vibrant</option>
+          <option value="DarkVibrant">Dark Vibrant</option>
+          <option value="Muted">Muted</option>
+          <option value="LightMuted">Light Muted</option>
+          <option value="DarkMuted">Dark Muted</option>
+        </select>
+      </div>
+      <div class="stretch-row">
+        <label for="color-text-swatch">Text swatch</label>
+        <select id="color-text-swatch">
+          <option value="auto" selected>Auto</option>
+          <option value="Vibrant">Vibrant</option>
+          <option value="LightVibrant">Light Vibrant</option>
+          <option value="DarkVibrant">Dark Vibrant</option>
+          <option value="Muted">Muted</option>
+          <option value="LightMuted">Light Muted</option>
+          <option value="DarkMuted">Dark Muted</option>
+        </select>
+      </div>
+      <div class="stretch-row">
+        <label for="color-outline-swatch">Outline swatch</label>
+        <select id="color-outline-swatch">
+          <option value="auto" selected>Auto</option>
+          <option value="Vibrant">Vibrant</option>
+          <option value="LightVibrant">Light Vibrant</option>
+          <option value="DarkVibrant">Dark Vibrant</option>
+          <option value="Muted">Muted</option>
+          <option value="LightMuted">Light Muted</option>
+          <option value="DarkMuted">Dark Muted</option>
+        </select>
+      </div>
+      <div class="stretch-row">
         <label for="color-saturation">Saturation</label>
-        <input type="range" id="color-saturation" min="0" max="2" step="0.05" value="2" />
-        <span class="value-display" id="color-saturation-value">2.00</span>
+        <input type="range" id="color-saturation" min="0" max="2" step="0.05" value="1" />
+        <span class="value-display" id="color-saturation-value">1.00</span>
       </div>
       <div class="stretch-row">
         <label for="color-contrast">Min contrast</label>
-        <input type="range" id="color-contrast" min="1" max="7" step="0.1" value="7" />
-        <span class="value-display" id="color-contrast-value">7.0</span>
+        <input type="range" id="color-contrast" min="1" max="7" step="0.1" value="4.5" />
+        <span class="value-display" id="color-contrast-value">4.5</span>
       </div>
       <div class="stretch-row">
         <label for="color-bg">Background</label>
