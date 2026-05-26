@@ -35,6 +35,11 @@ import {
   DEFAULT_STAMP_VALUE,
   DEFAULT_STAMP_UNIT,
 } from './lib/stamp.js';
+import {
+  generateDatamatrixSvg,
+  DATAMATRIX_FILE,
+  DEFAULT_DATAMATRIX_VALUE,
+} from './lib/datamatrix.js';
 
 // Same dataset the queue/test scenes draw from — the only one carrying the
 // localFilename/width/height fields needed to load an artwork from /artworks.
@@ -86,11 +91,15 @@ async function main() {
   const titleInput = document.getElementById('title-text');
   const stampValueInput = document.getElementById('stamp-value');
   const stampUnitInput = document.getElementById('stamp-unit');
+  const datamatrixInput = document.getElementById('datamatrix-text');
   const initialBarcode = (barcodeInput && barcodeInput.value) || DEFAULT_BARCODE_VALUE;
   const initialTitle = (titleInput && titleInput.value) || DEFAULT_TITLE_TEXT;
   const initialStampValue = (stampValueInput && stampValueInput.value) || DEFAULT_STAMP_VALUE;
   const initialStampUnit = (stampUnitInput && stampUnitInput.value) || DEFAULT_STAMP_UNIT;
+  const initialDatamatrix =
+    (datamatrixInput && datamatrixInput.value) || DEFAULT_DATAMATRIX_VALUE;
   elementSvgs['Barcode.svg'] = generateBarcodeSvg(initialBarcode);
+  elementSvgs[DATAMATRIX_FILE] = generateDatamatrixSvg(initialDatamatrix);
 
   // Side text: pick a shared font size + per-SVG heights that fit "preserved"
   // and the title in the band-height column (OUTER_PAD | preserved | MIN_GAP |
@@ -148,6 +157,12 @@ async function main() {
   };
   if (stampValueInput) stampValueInput.addEventListener('input', rebuildStamp);
   if (stampUnitInput) stampUnitInput.addEventListener('input', rebuildStamp);
+
+  if (datamatrixInput) {
+    datamatrixInput.addEventListener('input', () => {
+      builder.setElement(DATAMATRIX_FILE, generateDatamatrixSvg(datamatrixInput.value));
+    });
+  }
 
   // Smiths description — the long passage that wraps the can vertically, lives
   // as live HTML inside the builder. Seed the textarea with the default so the
