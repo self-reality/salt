@@ -2,9 +2,9 @@
 // label.js — standalone label-texture builder page (no THREE).
 //
 // Wires the right-side panel and the draggable bottom edge to the pure-2D
-// label-band builder. Reuses the existing colour-extraction, node-vibrant and
-// dataset modules. This page develops the texture construction in isolation; the
-// real 3D scenes will import lib/label-texture.js later.
+// label-band builder. Reuses the existing colour-extraction and dataset modules.
+// This page develops the texture construction in isolation; the real 3D scenes
+// will import lib/label-texture.js later.
 // -----------------------------------------------------------------------------
 
 import { deriveColors } from './lib/color-extraction.js';
@@ -73,9 +73,6 @@ async function main() {
   const sampleSlider = document.getElementById('color-sample');
   const paletteSlider = document.getElementById('color-palette');
   const vividnessSlider = document.getElementById('color-vividness');
-  const bgSwatchSelect = document.getElementById('color-bg-swatch');
-  const textSwatchSelect = document.getElementById('color-text-swatch');
-  const outlineSwatchSelect = document.getElementById('color-outline-swatch');
   const saturationSlider = document.getElementById('color-saturation');
   const contrastSlider = document.getElementById('color-contrast');
   const bgInput = document.getElementById('color-bg');
@@ -94,11 +91,11 @@ async function main() {
     statusEl.hidden = !msg;
   };
 
-  // Every method reads the artwork's pixels through a canvas; a file:// page or
-  // cross-origin artwork taints that canvas so getImageData throws, and EVERY
-  // method then silently falls back to a black/white trio (looking identical).
-  // Probe once per image so we can say so plainly instead of leaving it a
-  // mystery. Cached because apply() also fires on every slider drag.
+  // Dominant reads the artwork's pixels through a canvas; a file:// page or
+  // cross-origin artwork taints that canvas so getImageData throws, and the
+  // derivation silently falls back to a black/white trio. Probe once per image
+  // so we can say so plainly. Cached because apply() also fires on every slider
+  // drag.
   let taintCheckedImg = null, taintCheckedOk = true;
   const canSampleImage = (img) => {
     if (img === taintCheckedImg) return taintCheckedOk;
@@ -117,30 +114,14 @@ async function main() {
   };
 
   const readSettings = () => ({
-    method: methodSelect ? methodSelect.value : 'dominant',
     sampleSize: sampleSlider ? parseInt(sampleSlider.value, 10) : 128,
     paletteSize: paletteSlider ? parseInt(paletteSlider.value, 10) : 16,
     vividness: vividnessSlider ? parseFloat(vividnessSlider.value) : 8,
-    bgSwatch: bgSwatchSelect ? bgSwatchSelect.value : 'auto',
-    textSwatch: textSwatchSelect ? textSwatchSelect.value : 'auto',
-    outlineSwatch: outlineSwatchSelect ? outlineSwatchSelect.value : 'auto',
     saturation: saturationSlider ? parseFloat(saturationSlider.value) : 2,
     minContrast: contrastSlider ? parseFloat(contrastSlider.value) : 7,
   });
 
-  // node-vibrant (the 'vibrant-js' method) is lazy-loaded only when chosen, so a
-  // broken vendor module never breaks the dominant path.
-  let vibrantModule = null;
-  const loadVibrant = () =>
-    (vibrantModule ||= import('./lib/vibrant-method.js'));
-
-  // Derived trio from the artwork (or current swatch values when no artwork
-  // yet). node-vibrant ('vibrant-js') is async; the dominant method is sync.
-  // Sets deriveWarning when the Vibrant path throws and we fall back to dominant,
-  // so apply() can surface it instead of the fallback masquerading as Dominant.
-  let deriveWarning = '';
-  async function baseTrio() {
-    deriveWarning = '';
+  function baseTrio() {
     if (!lastArtwork) {
       return {
         background: bgInput ? bgInput.value : '#000000',
@@ -148,43 +129,19 @@ async function main() {
         outline: outlineInput ? outlineInput.value : '#000000',
       };
     }
-    const settings = readSettings();
-    if (settings.method === 'vibrant-js') {
-      try {
-        const { deriveColorsVibrant } = await loadVibrant();
-        return await deriveColorsVibrant(lastArtwork, {
-          saturation: settings.saturation,
-          minContrast: settings.minContrast,
-          bgSwatch: settings.bgSwatch,
-          textSwatch: settings.textSwatch,
-          outlineSwatch: settings.outlineSwatch,
-        });
-      } catch (err) {
-        console.warn('label: Vibrant.js unavailable, falling back to dominant', err);
-        deriveWarning = `⚠ Vibrant.js failed — showing Dominant instead. ${err && err.message ? err.message : err}`;
-        return deriveColors(lastArtwork, { ...settings, method: 'dominant' });
-      }
-    }
-    return deriveColors(lastArtwork, settings);
+    return deriveColors(lastArtwork, readSettings());
   }
 
-  // Token guards against a slower async derivation overwriting a newer one.
-  let applyToken = 0;
-  async function apply() {
-    const token = ++applyToken;
-    // Tainted-canvas check first: it explains all methods collapsing to the same
-    // black/white result, and outranks the Vibrant-specific warning.
+  function apply() {
     const taintWarning = lastArtwork && !canSampleImage(lastArtwork)
-      ? '⚠ Can’t read this image’s pixels (page on file:// or cross-origin artwork). Every method falls back to black/white — serve the page over http://localhost.'
+      ? '⚠ Can’t read this image’s pixels (page on file:// or cross-origin artwork). Dominant falls back to black/white — serve the page over http://localhost.'
       : '';
-    const base = await baseTrio();
-    if (token !== applyToken) return;
-    const trio = { ...base, ...overrides };
+    const trio = { ...baseTrio(), ...overrides };
     builder.setColors(trio);
     if (bgInput) bgInput.value = trio.background;
     if (textInput) textInput.value = trio.text;
     if (outlineInput) outlineInput.value = trio.outline;
-    setColorStatus(taintWarning || deriveWarning);
+    setColorStatus(taintWarning);
   }
 
   const bindSlider = (slider, fmt) => {
@@ -199,44 +156,7 @@ async function main() {
   bindSlider(vividnessSlider, (v) => parseFloat(v).toFixed(1));
   bindSlider(saturationSlider, (v) => parseFloat(v).toFixed(2));
   bindSlider(contrastSlider, (v) => parseFloat(v).toFixed(1));
-  if (bgSwatchSelect) bgSwatchSelect.addEventListener('change', apply);
-  if (textSwatchSelect) textSwatchSelect.addEventListener('change', apply);
-  if (outlineSwatchSelect) outlineSwatchSelect.addEventListener('change', apply);
-
-  // Each method consumes a different subset of the controls, so only the relevant
-  // ones are shown. Saturation + min-contrast feed the shared finalize pass and
-  // apply to every method. The rest are method-specific: "sample" (offscreen
-  // sampling resolution) drives the offline pixel-reading method; "palette"
-  // (median-cut buckets) and "vividness" (text contrast↔saturation bias) are
-  // dominant-only; the swatch dropdowns pick node-vibrant's named swatches.
-  // node-vibrant does its own sampling and quantisation, so it shows neither
-  // sample nor palette.
-  const METHOD_SETTINGS = {
-    dominant: ['sample', 'palette', 'vividness', 'saturation', 'contrast'],
-    'vibrant-js': ['bgswatch', 'textswatch', 'outlineswatch', 'saturation', 'contrast'],
-  };
-  const settingControls = {
-    sample: sampleSlider,
-    palette: paletteSlider,
-    vividness: vividnessSlider,
-    bgswatch: bgSwatchSelect,
-    textswatch: textSwatchSelect,
-    outlineswatch: outlineSwatchSelect,
-    saturation: saturationSlider,
-    contrast: contrastSlider,
-  };
-  const syncMethodSettings = () => {
-    const method = methodSelect ? methodSelect.value : 'dominant';
-    const applicable = METHOD_SETTINGS[method] || METHOD_SETTINGS.dominant;
-    for (const [key, control] of Object.entries(settingControls)) {
-      const row = control && control.closest('.stretch-row');
-      // Inline style (not the `hidden` attr) so it overrides .stretch-row's
-      // `display: flex` from the stylesheet.
-      if (row) row.style.display = applicable.includes(key) ? '' : 'none';
-    }
-  };
-  syncMethodSettings();
-  if (methodSelect) methodSelect.addEventListener('change', () => { syncMethodSettings(); apply(); });
+  if (methodSelect) methodSelect.addEventListener('change', apply);
 
   // Manual swatch edits become overrides until "Re-derive" clears them.
   if (bgInput) bgInput.addEventListener('input', () => { overrides.background = bgInput.value; apply(); });
