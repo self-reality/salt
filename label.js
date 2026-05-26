@@ -73,7 +73,6 @@ async function main() {
   const sampleSlider = document.getElementById('color-sample');
   const paletteSlider = document.getElementById('color-palette');
   const vividnessSlider = document.getElementById('color-vividness');
-  const hueShiftSlider = document.getElementById('color-hueshift');
   const bgSwatchSelect = document.getElementById('color-bg-swatch');
   const textSwatchSelect = document.getElementById('color-text-swatch');
   const outlineSwatchSelect = document.getElementById('color-outline-swatch');
@@ -119,25 +118,24 @@ async function main() {
 
   const readSettings = () => ({
     method: methodSelect ? methodSelect.value : 'dominant',
-    sampleSize: sampleSlider ? parseInt(sampleSlider.value, 10) : 64,
-    paletteSize: paletteSlider ? parseInt(paletteSlider.value, 10) : 8,
-    vividness: vividnessSlider ? parseFloat(vividnessSlider.value) : 2.5,
-    hueShift: hueShiftSlider ? parseFloat(hueShiftSlider.value) : 180,
+    sampleSize: sampleSlider ? parseInt(sampleSlider.value, 10) : 128,
+    paletteSize: paletteSlider ? parseInt(paletteSlider.value, 10) : 16,
+    vividness: vividnessSlider ? parseFloat(vividnessSlider.value) : 8,
     bgSwatch: bgSwatchSelect ? bgSwatchSelect.value : 'auto',
     textSwatch: textSwatchSelect ? textSwatchSelect.value : 'auto',
     outlineSwatch: outlineSwatchSelect ? outlineSwatchSelect.value : 'auto',
-    saturation: saturationSlider ? parseFloat(saturationSlider.value) : 1,
-    minContrast: contrastSlider ? parseFloat(contrastSlider.value) : 4.5,
+    saturation: saturationSlider ? parseFloat(saturationSlider.value) : 2,
+    minContrast: contrastSlider ? parseFloat(contrastSlider.value) : 7,
   });
 
-  // node-vibrant (the 'vibrant-js' method) is lazy-loaded from a CDN only when
-  // chosen, so an unreachable CDN never breaks the four offline methods.
+  // node-vibrant (the 'vibrant-js' method) is lazy-loaded only when chosen, so a
+  // broken vendor module never breaks the dominant path.
   let vibrantModule = null;
   const loadVibrant = () =>
     (vibrantModule ||= import('./lib/vibrant-method.js'));
 
   // Derived trio from the artwork (or current swatch values when no artwork
-  // yet). node-vibrant ('vibrant-js') is async; the other methods are sync.
+  // yet). node-vibrant ('vibrant-js') is async; the dominant method is sync.
   // Sets deriveWarning when the Vibrant path throws and we fall back to dominant,
   // so apply() can surface it instead of the fallback masquerading as Dominant.
   let deriveWarning = '';
@@ -199,7 +197,6 @@ async function main() {
   bindSlider(sampleSlider, (v) => String(parseInt(v, 10)));
   bindSlider(paletteSlider, (v) => String(parseInt(v, 10)));
   bindSlider(vividnessSlider, (v) => parseFloat(v).toFixed(1));
-  bindSlider(hueShiftSlider, (v) => `${parseInt(v, 10)}°`);
   bindSlider(saturationSlider, (v) => parseFloat(v).toFixed(2));
   bindSlider(contrastSlider, (v) => parseFloat(v).toFixed(1));
   if (bgSwatchSelect) bgSwatchSelect.addEventListener('change', apply);
@@ -209,21 +206,19 @@ async function main() {
   // Each method consumes a different subset of the controls, so only the relevant
   // ones are shown. Saturation + min-contrast feed the shared finalize pass and
   // apply to every method. The rest are method-specific: "sample" (offscreen
-  // sampling resolution) drives the two offline pixel-reading methods; "palette"
+  // sampling resolution) drives the offline pixel-reading method; "palette"
   // (median-cut buckets) and "vividness" (text contrast↔saturation bias) are
-  // dominant-only; "hueshift" (text hue rotation) is average-only; the swatch
-  // dropdowns pick node-vibrant's named swatches. node-vibrant does its own
-  // sampling and quantisation, so it shows neither sample nor palette.
+  // dominant-only; the swatch dropdowns pick node-vibrant's named swatches.
+  // node-vibrant does its own sampling and quantisation, so it shows neither
+  // sample nor palette.
   const METHOD_SETTINGS = {
     dominant: ['sample', 'palette', 'vividness', 'saturation', 'contrast'],
-    average: ['sample', 'hueshift', 'saturation', 'contrast'],
     'vibrant-js': ['bgswatch', 'textswatch', 'outlineswatch', 'saturation', 'contrast'],
   };
   const settingControls = {
     sample: sampleSlider,
     palette: paletteSlider,
     vividness: vividnessSlider,
-    hueshift: hueShiftSlider,
     bgswatch: bgSwatchSelect,
     textswatch: textSwatchSelect,
     outlineswatch: outlineSwatchSelect,
