@@ -17,6 +17,7 @@ import {
   BAND_TOP,
   DEFAULT_BAND_HEIGHT,
 } from './lib/label-texture.js';
+import { generateBarcodeSvg, DEFAULT_BARCODE_VALUE } from './lib/barcode.js';
 
 // Same dataset the queue/test scenes draw from — the only one carrying the
 // localFilename/width/height fields needed to load an artwork from /artworks.
@@ -54,7 +55,18 @@ async function main() {
 
   // ---- Builder + on-screen canvas ------------------------------------------
   const builder = createLabelTexture();
+  // Override the static Barcode.svg with a freshly-generated one so the initial
+  // paint matches whatever value the side-panel input is showing.
+  const barcodeInput = document.getElementById('barcode-text');
+  const initialBarcode = (barcodeInput && barcodeInput.value) || DEFAULT_BARCODE_VALUE;
+  elementSvgs['Barcode.svg'] = generateBarcodeSvg(initialBarcode);
   builder.setElements(elementSvgs);
+
+  if (barcodeInput) {
+    barcodeInput.addEventListener('input', () => {
+      builder.setElement('Barcode.svg', generateBarcodeSvg(barcodeInput.value));
+    });
+  }
 
   const wrap = document.getElementById('canvas-wrap');
   const handle = document.getElementById('resize-handle');

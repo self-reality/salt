@@ -125,6 +125,12 @@
       padding: 0.1rem 0.25rem;
       font-size: 0.85rem;
     }
+    .stretch-row input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 0.1rem 0.25rem;
+      font-size: 0.85rem;
+    }
     .value-display {
       min-width: 3.2rem;
       text-align: right;
@@ -165,6 +171,15 @@
         <button type="button" id="artwork-next" aria-label="Next artwork" title="Next artwork">Next ▶</button>
       </div>
       <button type="button" id="artwork-shuffle">Shuffle artworks</button>
+    </div>
+
+    <div class="controls-group">
+      <div class="controls-section-title">Barcode</div>
+      <div class="stretch-row">
+        <label for="barcode-text">Number</label>
+        <input type="text" id="barcode-text" value="2029-135531" spellcheck="false" />
+      </div>
+      <div class="hint">Code 128 Set B (printable ASCII).</div>
     </div>
 
     <div class="controls-group">
