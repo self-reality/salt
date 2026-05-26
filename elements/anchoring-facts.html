@@ -109,6 +109,69 @@
     #wrap:not(.show-guides) #ruler,
     #wrap:not(.show-guides) #col-brackets,
     #wrap:not(.show-guides) #col-ticks { display: none; }
+
+    /* Hoverable block & padding overlays — pure DOM rectangles positioned on
+       top of the canvas. Blocks sit above paddings so the named regions are
+       the dominant outline; the handle and ruler stay above both. */
+    #blocks, #paddings {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    #paddings { z-index: 1; }
+    #blocks   { z-index: 2; }
+    .block-overlay {
+      position: absolute;
+      border: 1px solid rgba(43, 108, 255, 0.55);
+      background: rgba(43, 108, 255, 0.04);
+      pointer-events: auto;
+      cursor: crosshair;
+      transition: background 80ms linear;
+    }
+    .block-overlay:hover {
+      background: rgba(43, 108, 255, 0.22);
+      border-color: #2b6cff;
+    }
+    .padding-overlay {
+      position: absolute;
+      background:
+        repeating-linear-gradient(
+          45deg,
+          rgba(180, 100, 30, 0.10) 0 4px,
+          rgba(180, 100, 30, 0.22) 4px 8px);
+      pointer-events: auto;
+      cursor: crosshair;
+      transition: background 80ms linear;
+    }
+    .padding-overlay:hover {
+      background:
+        repeating-linear-gradient(
+          45deg,
+          rgba(180, 100, 30, 0.22) 0 4px,
+          rgba(180, 100, 30, 0.40) 4px 8px);
+      outline: 1px solid rgba(180, 100, 30, 0.65);
+    }
+    #wrap:not(.show-blocks) #blocks,
+    #wrap:not(.show-blocks) #paddings { display: none; }
+
+    #inspect-tip {
+      position: absolute;
+      z-index: 5;
+      background: rgba(20, 24, 30, 0.94);
+      color: #fff;
+      font: 11px/1.35 Helvetica, Arial, sans-serif;
+      padding: 5px 8px;
+      border-radius: 4px;
+      pointer-events: none;
+      white-space: nowrap;
+      display: none;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    #inspect-tip b { font-weight: 600; }
+    #inspect-tip .dims {
+      color: #cfd2d6;
+      font-variant-numeric: tabular-nums;
+    }
     #cv {
       display: block;
       width: 100%;
@@ -129,6 +192,7 @@
       align-items: center;
       justify-content: center;
       touch-action: none;
+      z-index: 4;
     }
     #handle::before {
       content: '';
@@ -152,11 +216,14 @@
   </p>
 
   <div class="toolbar">
-    <label><input type="checkbox" id="toggle-guides" checked> Show inspect guides (ruler + column names)</label>
+    <label><input type="checkbox" id="toggle-guides" checked> Ruler &amp; column names</label>
+    <label><input type="checkbox" id="toggle-blocks" checked> Blocks &amp; paddings</label>
   </div>
 
-  <div id="wrap" class="show-guides">
+  <div id="wrap" class="show-guides show-blocks">
     <canvas id="cv"></canvas>
+    <div id="paddings"></div>
+    <div id="blocks"></div>
     <canvas id="ruler"></canvas>
     <div id="col-brackets">
       <div class="col-bracket" id="bracket-left"><span>Left column</span></div>
@@ -168,6 +235,7 @@
       <div class="v-tick" id="tick-right-end"></div>
     </div>
     <div id="handle" title="Drag to resize the table width"></div>
+    <div id="inspect-tip"></div>
   </div>
 
   <p class="readout">Canvas: <strong id="readout">—</strong></p>
@@ -188,10 +256,18 @@
     const tickStart    = document.getElementById('tick-left-start');
     const tickDivider  = document.getElementById('tick-divider');
     const tickEnd      = document.getElementById('tick-right-end');
-    const toggle       = document.getElementById('toggle-guides');
+    const blocksRoot   = document.getElementById('blocks');
+    const padsRoot     = document.getElementById('paddings');
+    const tip          = document.getElementById('inspect-tip');
+    const toggleGuides = document.getElementById('toggle-guides');
+    const toggleBlocks = document.getElementById('toggle-blocks');
 
-    toggle.addEventListener('change', () => {
-      wrap.classList.toggle('show-guides', toggle.checked);
+    toggleGuides.addEventListener('change', () => {
+      wrap.classList.toggle('show-guides', toggleGuides.checked);
+    });
+    toggleBlocks.addEventListener('change', () => {
+      wrap.classList.toggle('show-blocks', toggleBlocks.checked);
+      if (!toggleBlocks.checked) tip.style.display = 'none';
     });
 
     // Horizontal pixel ruler painted onto its own canvas. Ticks every 10 px,
@@ -232,6 +308,75 @@
       tickEnd.style.left     = lay.rightColEnd + 'px';
     }
 
+    // Build hoverable rectangles for each named block + each surrounding
+    // padding/gap. Rebuilt on every paint so resizing the canvas keeps the
+    // overlay in lockstep with the rendered layout.
+    //
+    // x is 1:1 because wrap width === canvas width. y is scaled by
+    // (wrap height / canvas natural height): the wrap is locked at 416 px to
+    // match the final slot, so the canvas content gets stretched/squashed in
+    // y when its natural height drifts from 416 at non-reference widths.
+    // Dim/position read-outs stay in canvas-native px (what the renderer
+    // actually paints), so they line up with constants in the JS source.
+    function buildOverlay(el, cls, item, yScale) {
+      el.className = cls;
+      el.style.left   = item.x + 'px';
+      el.style.top    = (item.y * yScale) + 'px';
+      el.style.width  = Math.max(0, item.w) + 'px';
+      el.style.height = Math.max(0, item.h * yScale) + 'px';
+      el.dataset.name = item.name;
+      el.dataset.dims = `${Math.round(item.w)} × ${Math.round(item.h)} px`;
+      el.dataset.pos  = `@ ${Math.round(item.x)}, ${Math.round(item.y)}`;
+    }
+    function paintBlocks(L) {
+      const ins = renderer.getInspect(L);
+      const wrapH = wrap.getBoundingClientRect().height;
+      const yScale = ins.height > 0 ? wrapH / ins.height : 1;
+      blocksRoot.replaceChildren();
+      padsRoot.replaceChildren();
+      for (const pad of ins.spacings) {
+        const el = document.createElement('div');
+        buildOverlay(el, 'padding-overlay', pad, yScale);
+        padsRoot.appendChild(el);
+      }
+      for (const blk of ins.blocks) {
+        const el = document.createElement('div');
+        buildOverlay(el, 'block-overlay', blk, yScale);
+        blocksRoot.appendChild(el);
+      }
+    }
+
+    // One delegated tooltip — fires for any descendant carrying data-name.
+    function tipFor(t) {
+      tip.innerHTML =
+        `<b>${t.dataset.name}</b><br>` +
+        `<span class="dims">${t.dataset.dims}</span><br>` +
+        `<span class="dims">${t.dataset.pos}</span>`;
+      tip.style.display = 'block';
+    }
+    function moveTip(e) {
+      const rect = wrap.getBoundingClientRect();
+      const x = e.clientX - rect.left + 14;
+      const y = e.clientY - rect.top + 14;
+      tip.style.left = x + 'px';
+      tip.style.top  = y + 'px';
+    }
+    function bindHover(root) {
+      root.addEventListener('mouseover', (e) => {
+        const t = e.target.closest('[data-name]');
+        if (t) tipFor(t);
+      });
+      root.addEventListener('mousemove', moveTip);
+      root.addEventListener('mouseout', (e) => {
+        const t = e.target.closest('[data-name]');
+        if (!t) return;
+        const next = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-name]');
+        if (!next) tip.style.display = 'none';
+      });
+    }
+    bindHover(blocksRoot);
+    bindHover(padsRoot);
+
     // Logo sits next to this page (elements/SM-logo-600-px.png), so basePath
     // is empty — fetched relative to elements/anchoring-facts.html.
     const renderer = createAnchoringFacts({ basePath: '' });
@@ -247,6 +392,7 @@
         readout.textContent = `${src.width} × ${src.height} px`;
         paintRuler(length);
         positionGuides(length);
+        paintBlocks(length);
       });
     }
     // Coalesce drag-driven renders to one per frame.
