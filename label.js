@@ -18,6 +18,16 @@ import {
   DEFAULT_BAND_HEIGHT,
 } from './lib/label-texture.js';
 import { generateBarcodeSvg, DEFAULT_BARCODE_VALUE } from './lib/barcode.js';
+import {
+  generateSideTextSvg,
+  loadPacificoDataUrl,
+  PRESERVED_FRAME,
+  TITLE_FRAME,
+  PRESERVED_FILE,
+  TITLE_FILE,
+  DEFAULT_PRESERVED_TEXT,
+  DEFAULT_TITLE_TEXT,
+} from './lib/side-text.js';
 
 // Same dataset the queue/test scenes draw from — the only one carrying the
 // localFilename/width/height fields needed to load an artwork from /artworks.
@@ -55,16 +65,38 @@ async function main() {
 
   // ---- Builder + on-screen canvas ------------------------------------------
   const builder = createLabelTexture();
-  // Override the static Barcode.svg with a freshly-generated one so the initial
-  // paint matches whatever value the side-panel input is showing.
+
+  // Pacifico for the two live side-text labels — best-effort fetch, the SVG
+  // generator falls back to system cursive if it can't load. Resolves before
+  // setElements() so the initial paint already carries the embedded font.
+  const pacificoDataUrl = await loadPacificoDataUrl();
+
+  // Override the static Barcode.svg + the two path-baked side-text SVGs with
+  // freshly-generated ones so the initial paint matches the side-panel inputs.
   const barcodeInput = document.getElementById('barcode-text');
+  const titleInput = document.getElementById('title-text');
   const initialBarcode = (barcodeInput && barcodeInput.value) || DEFAULT_BARCODE_VALUE;
+  const initialTitle = (titleInput && titleInput.value) || DEFAULT_TITLE_TEXT;
   elementSvgs['Barcode.svg'] = generateBarcodeSvg(initialBarcode);
+  elementSvgs[PRESERVED_FILE] = generateSideTextSvg(
+    DEFAULT_PRESERVED_TEXT, PRESERVED_FRAME, pacificoDataUrl,
+  );
+  elementSvgs[TITLE_FILE] = generateSideTextSvg(
+    initialTitle, TITLE_FRAME, pacificoDataUrl,
+  );
   builder.setElements(elementSvgs);
 
   if (barcodeInput) {
     barcodeInput.addEventListener('input', () => {
       builder.setElement('Barcode.svg', generateBarcodeSvg(barcodeInput.value));
+    });
+  }
+  if (titleInput) {
+    titleInput.addEventListener('input', () => {
+      builder.setElement(
+        TITLE_FILE,
+        generateSideTextSvg(titleInput.value, TITLE_FRAME, pacificoDataUrl),
+      );
     });
   }
 
