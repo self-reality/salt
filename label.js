@@ -136,9 +136,11 @@ async function main() {
   // Keep the bare Stamp.svg around — re-injection on every edit reads from it.
   const baseStampSvg = elementSvgs[STAMP_FILE] || '';
   elementSvgs[STAMP_FILE] = injectStampText(baseStampSvg, initialStampValue, initialStampUnit);
-  // Same pattern for Circle.svg: cache the placeholder version, then re-inject
-  // each new artwork's author avatar by xlink:href swap.
+  // Same pattern for Circle.svg: cache the unmodified source, then ship the
+  // empty-disc fallback in the initial paint so the bundled placeholder PNG
+  // never shows. Once an artwork loads, setAvatar() swaps in the real avatar.
   const baseCircleSvg = elementSvgs[CIRCLE_FILE] || '';
+  elementSvgs[CIRCLE_FILE] = injectCircleAvatar(baseCircleSvg, null);
   builder.setElements(elementSvgs);
   // Preserved's yTop is constant (text top pinned at OUTER_PAD); title's yTop
   // tracks its dynamic SVG height so the text bottom stays at H − OUTER_PAD.
@@ -384,6 +386,9 @@ async function main() {
       img.onload = () => { loadArtwork(img); URL.revokeObjectURL(url); };
       img.onerror = () => URL.revokeObjectURL(url);
       img.src = url;
+      // User-supplied file has no associated author — show the empty-disc
+      // fallback rather than whatever avatar was on screen before.
+      setAvatar(null);
     });
   }
 
