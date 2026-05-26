@@ -71,7 +71,13 @@ async function main() {
   await Promise.all(
     ELEMENT_FILES.map(async (file) => {
       try {
-        const res = await fetch(ELEMENTS_BASE_PATH + encodeURIComponent(file));
+        // `cache: 'no-cache'` forces a conditional revalidation on each load —
+        // ⌘⇧R reloads label.html but Chrome/Safari can still serve stale SVG
+        // sub-resources from disk cache, which masked our Stamp.svg edits.
+        const res = await fetch(
+          ELEMENTS_BASE_PATH + encodeURIComponent(file),
+          { cache: 'no-cache' },
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         elementSvgs[file] = await res.text();
       } catch (err) {
