@@ -116,9 +116,10 @@ async function main() {
   const baseStampSvg = elementSvgs[STAMP_FILE] || '';
   elementSvgs[STAMP_FILE] = injectStampText(baseStampSvg, initialStampValue, initialStampUnit);
   builder.setElements(elementSvgs);
-  // Title is bottom-anchored; its yTop moves with its dynamic SVG height so
-  // the bottom edge stays pinned. Set after setElements so the seeded yTop
-  // matches the initial title raster.
+  // The side labels live in a 933 px column: OUTER_PAD | preserved | MIN_GAP |
+  // title | OUTER_PAD. Preserved's yTop is constant (text top pinned); title's
+  // yTop tracks its dynamic SVG height so the text bottom stays pinned.
+  builder.setLayerYTop(PRESERVED_FILE, initialSide.layout.preservedYTop);
   builder.setLayerYTop(TITLE_FILE, initialSide.layout.titleYTop);
 
   if (barcodeInput) {
@@ -135,6 +136,8 @@ async function main() {
       builder.setElement(TITLE_FILE, titleSvg);
     });
   }
+  // preservedYTop is constant per-spec, so it only needs setting once at init
+  // (above). The title's yTop is dynamic and re-applied on every keystroke.
   const rebuildStamp = () => {
     const value = stampValueInput ? stampValueInput.value : initialStampValue;
     const unit = stampUnitInput ? stampUnitInput.value : initialStampUnit;
