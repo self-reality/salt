@@ -114,6 +114,7 @@ async function main() {
   const medallionOuterRadiusInput = document.getElementById('medallion-outer-radius');
   const medallionInnerFontInput = document.getElementById('medallion-inner-font');
   const medallionInnerRadiusInput = document.getElementById('medallion-inner-radius');
+  const medallionGuidesInput = document.getElementById('medallion-guides');
   const medallionOuterFontValue = document.getElementById('medallion-outer-font-value');
   const medallionOuterRadiusValue = document.getElementById('medallion-outer-radius-value');
   const medallionInnerFontValue = document.getElementById('medallion-inner-font-value');
@@ -123,6 +124,7 @@ async function main() {
     outerBaselineR: medallionOuterRadiusInput ? parseFloat(medallionOuterRadiusInput.value) : undefined,
     innerFontSize: medallionInnerFontInput ? parseFloat(medallionInnerFontInput.value) : undefined,
     innerBaselineR: medallionInnerRadiusInput ? parseFloat(medallionInnerRadiusInput.value) : undefined,
+    showGuides: !!(medallionGuidesInput && medallionGuidesInput.checked),
   });
   const initialBarcode = (barcodeInput && barcodeInput.value) || DEFAULT_BARCODE_VALUE;
   const initialTitle = (titleInput && titleInput.value) || DEFAULT_TITLE_TEXT;
@@ -492,6 +494,7 @@ async function main() {
   wireMedallionSlider(medallionOuterRadiusInput, medallionOuterRadiusValue);
   wireMedallionSlider(medallionInnerFontInput, medallionInnerFontValue);
   wireMedallionSlider(medallionInnerRadiusInput, medallionInnerRadiusValue);
+  if (medallionGuidesInput) medallionGuidesInput.addEventListener('change', rebuildMedallion);
 
   function avatarForSelectedOption() {
     if (!artworkSelect) return null;
