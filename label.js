@@ -110,6 +110,20 @@ async function main() {
   const datamatrixInput = document.getElementById('datamatrix-text');
   const medallionOuterInput = document.getElementById('medallion-outer-text');
   const medallionInnerInput = document.getElementById('medallion-inner-text');
+  const medallionOuterFontInput = document.getElementById('medallion-outer-font');
+  const medallionOuterRadiusInput = document.getElementById('medallion-outer-radius');
+  const medallionInnerFontInput = document.getElementById('medallion-inner-font');
+  const medallionInnerRadiusInput = document.getElementById('medallion-inner-radius');
+  const medallionOuterFontValue = document.getElementById('medallion-outer-font-value');
+  const medallionOuterRadiusValue = document.getElementById('medallion-outer-radius-value');
+  const medallionInnerFontValue = document.getElementById('medallion-inner-font-value');
+  const medallionInnerRadiusValue = document.getElementById('medallion-inner-radius-value');
+  const medallionGeometry = () => ({
+    outerFontSize: medallionOuterFontInput ? parseFloat(medallionOuterFontInput.value) : undefined,
+    outerBaselineR: medallionOuterRadiusInput ? parseFloat(medallionOuterRadiusInput.value) : undefined,
+    innerFontSize: medallionInnerFontInput ? parseFloat(medallionInnerFontInput.value) : undefined,
+    innerBaselineR: medallionInnerRadiusInput ? parseFloat(medallionInnerRadiusInput.value) : undefined,
+  });
   const initialBarcode = (barcodeInput && barcodeInput.value) || DEFAULT_BARCODE_VALUE;
   const initialTitle = (titleInput && titleInput.value) || DEFAULT_TITLE_TEXT;
   const initialStampValue = (stampValueInput && stampValueInput.value) || DEFAULT_STAMP_VALUE;
@@ -161,12 +175,14 @@ async function main() {
     medallionOuterInput ? medallionOuterInput.value : initialMedallionOuter,
     medallionInnerInput ? medallionInnerInput.value : initialMedallionInner,
     pacificoDataUrl,
+    medallionGeometry(),
   );
   elementSvgs[CIRCLE_FILE] = injectMedallionText(
     injectCircleAvatar(baseCircleSvg, null),
     initialMedallionOuter,
     initialMedallionInner,
     pacificoDataUrl,
+    medallionGeometry(),
   );
   builder.setElements(elementSvgs);
   // Preserved's yTop is constant (text top pinned at OUTER_PAD); title's yTop
@@ -464,6 +480,18 @@ async function main() {
   };
   if (medallionOuterInput) medallionOuterInput.addEventListener('input', rebuildMedallion);
   if (medallionInnerInput) medallionInnerInput.addEventListener('input', rebuildMedallion);
+
+  const wireMedallionSlider = (input, valueEl) => {
+    if (!input) return;
+    input.addEventListener('input', () => {
+      if (valueEl) valueEl.textContent = input.value;
+      rebuildMedallion();
+    });
+  };
+  wireMedallionSlider(medallionOuterFontInput, medallionOuterFontValue);
+  wireMedallionSlider(medallionOuterRadiusInput, medallionOuterRadiusValue);
+  wireMedallionSlider(medallionInnerFontInput, medallionInnerFontValue);
+  wireMedallionSlider(medallionInnerRadiusInput, medallionInnerRadiusValue);
 
   function avatarForSelectedOption() {
     if (!artworkSelect) return null;
