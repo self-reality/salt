@@ -45,6 +45,11 @@ import {
   loadAvatarDataUrl,
   injectCircleAvatar,
 } from './lib/circle-avatar.js';
+import {
+  injectMedallionText,
+  DEFAULT_MEDALLION_OUTER_TEXT,
+  DEFAULT_MEDALLION_INNER_TEXT,
+} from './lib/medallion-text.js';
 
 // Same dataset the queue/test scenes draw from — the only one carrying the
 // localFilename/width/height fields needed to load an artwork from /artworks.
@@ -103,12 +108,18 @@ async function main() {
   const stampValueInput = document.getElementById('stamp-value');
   const stampUnitInput = document.getElementById('stamp-unit');
   const datamatrixInput = document.getElementById('datamatrix-text');
+  const medallionOuterInput = document.getElementById('medallion-outer-text');
+  const medallionInnerInput = document.getElementById('medallion-inner-text');
   const initialBarcode = (barcodeInput && barcodeInput.value) || DEFAULT_BARCODE_VALUE;
   const initialTitle = (titleInput && titleInput.value) || DEFAULT_TITLE_TEXT;
   const initialStampValue = (stampValueInput && stampValueInput.value) || DEFAULT_STAMP_VALUE;
   const initialStampUnit = (stampUnitInput && stampUnitInput.value) || DEFAULT_STAMP_UNIT;
   const initialDatamatrix =
     (datamatrixInput && datamatrixInput.value) || DEFAULT_DATAMATRIX_VALUE;
+  const initialMedallionOuter =
+    (medallionOuterInput && medallionOuterInput.value) || DEFAULT_MEDALLION_OUTER_TEXT;
+  const initialMedallionInner =
+    (medallionInnerInput && medallionInnerInput.value) || DEFAULT_MEDALLION_INNER_TEXT;
   elementSvgs['Barcode.svg'] = generateBarcodeSvg(initialBarcode);
   elementSvgs[DATAMATRIX_FILE] = generateDatamatrixSvg(initialDatamatrix);
 
@@ -139,8 +150,22 @@ async function main() {
   // Same pattern for Circle.svg: cache the unmodified source, then ship the
   // empty-disc fallback in the initial paint so the bundled placeholder PNG
   // never shows. Once an artwork loads, setAvatar() swaps in the real avatar.
+  // Avatar + medallion text both rewrite the same file, so rebuildCircle()
+  // composes the two transforms against the most recent inputs and updates the
+  // layer. circleAvatarDataUrl is the latest resolved avatar (null = empty
+  // disc); the medallion strings live on the side-panel inputs.
   const baseCircleSvg = elementSvgs[CIRCLE_FILE] || '';
-  elementSvgs[CIRCLE_FILE] = injectCircleAvatar(baseCircleSvg, null);
+  let circleAvatarDataUrl = null;
+  const composeCircleSvg = () => injectMedallionText(
+    injectCircleAvatar(baseCircleSvg, circleAvatarDataUrl),
+    medallionOuterInput ? medallionOuterInput.value : initialMedallionOuter,
+    medallionInnerInput ? medallionInnerInput.value : initialMedallionInner,
+  );
+  elementSvgs[CIRCLE_FILE] = injectMedallionText(
+    injectCircleAvatar(baseCircleSvg, null),
+    initialMedallionOuter,
+    initialMedallionInner,
+  );
   builder.setElements(elementSvgs);
   // Preserved's yTop is constant (text top pinned at OUTER_PAD); title's yTop
   // tracks its dynamic SVG height so the text bottom stays at H − OUTER_PAD.
@@ -424,9 +449,19 @@ async function main() {
     const token = ++circleAvatarToken;
     loadAvatarDataUrl(url).then((dataUrl) => {
       if (token !== circleAvatarToken) return;
-      builder.setElement(CIRCLE_FILE, injectCircleAvatar(baseCircleSvg, dataUrl));
+      circleAvatarDataUrl = dataUrl;
+      builder.setElement(CIRCLE_FILE, composeCircleSvg());
     });
   }
+
+  // Side-panel typing into either medallion field re-renders Circle.svg with
+  // both transforms reapplied — composeCircleSvg() reads whatever's currently
+  // in the avatar slot, so the avatar isn't lost between keystrokes.
+  const rebuildMedallion = () => {
+    builder.setElement(CIRCLE_FILE, composeCircleSvg());
+  };
+  if (medallionOuterInput) medallionOuterInput.addEventListener('input', rebuildMedallion);
+  if (medallionInnerInput) medallionInnerInput.addEventListener('input', rebuildMedallion);
 
   function avatarForSelectedOption() {
     if (!artworkSelect) return null;
