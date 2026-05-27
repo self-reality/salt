@@ -540,6 +540,22 @@ async function main() {
   wireMedallionSlider(medallionRadiusInput, medallionRadiusValue);
   if (medallionGuidesInput) medallionGuidesInput.addEventListener('change', rebuildMedallion);
 
+  // Inner Circle ↕ neighbours min spacings — drive builder.setMinSpacings()
+  // so the top-trio layout in lib/label-texture.js reflows live as you drag.
+  const spacingAboveInput = document.getElementById('inner-circle-spacing-above');
+  const spacingBelowInput = document.getElementById('inner-circle-spacing-below');
+  const spacingAboveValue = document.getElementById('inner-circle-spacing-above-value');
+  const spacingBelowValue = document.getElementById('inner-circle-spacing-below-value');
+  const wireSpacingSlider = (input, valueEl, key) => {
+    if (!input) return;
+    input.addEventListener('input', () => {
+      if (valueEl) valueEl.textContent = input.value;
+      builder.setMinSpacings({ [key]: parseFloat(input.value) });
+    });
+  };
+  wireSpacingSlider(spacingAboveInput, spacingAboveValue, 'above');
+  wireSpacingSlider(spacingBelowInput, spacingBelowValue, 'below');
+
   function avatarForSelectedOption() {
     if (!artworkSelect) return null;
     const opt = artworkSelect.options[artworkSelect.selectedIndex];
