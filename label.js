@@ -160,11 +160,13 @@ async function main() {
     injectCircleAvatar(baseCircleSvg, circleAvatarDataUrl),
     medallionOuterInput ? medallionOuterInput.value : initialMedallionOuter,
     medallionInnerInput ? medallionInnerInput.value : initialMedallionInner,
+    pacificoDataUrl,
   );
   elementSvgs[CIRCLE_FILE] = injectMedallionText(
     injectCircleAvatar(baseCircleSvg, null),
     initialMedallionOuter,
     initialMedallionInner,
+    pacificoDataUrl,
   );
   builder.setElements(elementSvgs);
   // Preserved's yTop is constant (text top pinned at OUTER_PAD); title's yTop
