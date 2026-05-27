@@ -49,6 +49,8 @@ import {
   injectMedallionText,
   DEFAULT_MEDALLION_OUTER_TEXT,
   DEFAULT_MEDALLION_INNER_TEXT,
+  DEFAULT_MEDALLION_RADIUS,
+  MAX_MEDALLION_FONT_SIZE,
 } from './lib/medallion-text.js';
 
 // Same dataset the queue/test scenes draw from — the only one carrying the
@@ -99,6 +101,20 @@ async function main() {
   // setElements() so the initial paint already carries the embedded font.
   const pacificoDataUrl = await loadPacificoDataUrl();
 
+  // Also register Pacifico with the page so canvas measureText (used by the
+  // medallion auto-sizer below) returns Pacifico metrics instead of falling
+  // back to system cursive. Embedding the font into each SVG covers the
+  // rasterisation pipeline, but document.fonts is its own world.
+  if (pacificoDataUrl && typeof FontFace !== 'undefined' && document.fonts) {
+    try {
+      const face = new FontFace('Pacifico', `url(${pacificoDataUrl})`);
+      await face.load();
+      document.fonts.add(face);
+    } catch (err) {
+      console.warn('label: could not register Pacifico with document.fonts', err);
+    }
+  }
+
   // Override the static Barcode.svg + the two path-baked side-text SVGs with
   // freshly-generated ones so the initial paint matches the side-panel inputs.
   // Stamp.svg ships without its lower text block — inject it here from the
@@ -110,22 +126,53 @@ async function main() {
   const datamatrixInput = document.getElementById('datamatrix-text');
   const medallionOuterInput = document.getElementById('medallion-outer-text');
   const medallionInnerInput = document.getElementById('medallion-inner-text');
-  const medallionOuterFontInput = document.getElementById('medallion-outer-font');
-  const medallionOuterRadiusInput = document.getElementById('medallion-outer-radius');
-  const medallionInnerFontInput = document.getElementById('medallion-inner-font');
-  const medallionInnerRadiusInput = document.getElementById('medallion-inner-radius');
+  const medallionRadiusInput = document.getElementById('medallion-radius');
+  const medallionRadiusValue = document.getElementById('medallion-radius-value');
   const medallionGuidesInput = document.getElementById('medallion-guides');
-  const medallionOuterFontValue = document.getElementById('medallion-outer-font-value');
-  const medallionOuterRadiusValue = document.getElementById('medallion-outer-radius-value');
-  const medallionInnerFontValue = document.getElementById('medallion-inner-font-value');
-  const medallionInnerRadiusValue = document.getElementById('medallion-inner-radius-value');
-  const medallionGeometry = () => ({
-    outerFontSize: medallionOuterFontInput ? parseFloat(medallionOuterFontInput.value) : undefined,
-    outerBaselineR: medallionOuterRadiusInput ? parseFloat(medallionOuterRadiusInput.value) : undefined,
-    innerFontSize: medallionInnerFontInput ? parseFloat(medallionInnerFontInput.value) : undefined,
-    innerBaselineR: medallionInnerRadiusInput ? parseFloat(medallionInnerRadiusInput.value) : undefined,
-    showGuides: !!(medallionGuidesInput && medallionGuidesInput.checked),
-  });
+
+  // Title + author share one circle and one font size. The font size is the
+  // largest value (capped at MAX_MEDALLION_FONT_SIZE) at which both rendered
+  // strings plus a small gap on each side still fit on the circumference.
+  // SIDE_GAP keeps the title's left/right ends from butting against the
+  // author's at the 9- and 3-o'clock positions when both strings are long.
+  const medallionMeasureCanvas = document.createElement('canvas');
+  const medallionMeasureCtx = medallionMeasureCanvas.getContext('2d');
+  const measureMedallionWidth = (text, fontSize) => {
+    medallionMeasureCtx.font = `${fontSize}px Pacifico, cursive`;
+    return medallionMeasureCtx.measureText(text || '').width;
+  };
+  const MEDALLION_SIDE_GAP = 40; // arc length per side, in SVG user units
+  const computeMedallionLayout = (title, author, radius) => {
+    // Measure at a reference size and scale linearly — text metrics scale
+    // proportionally with font-size, so one measurement per string suffices.
+    const refSize = 100;
+    const titleUnit = measureMedallionWidth(title, refSize) / refSize;
+    const authorUnit = measureMedallionWidth(author, refSize) / refSize;
+    const totalUnit = Math.max(titleUnit + authorUnit, 1e-6);
+    const circumference = 2 * Math.PI * radius;
+    const fontFit = Math.max(0, (circumference - 2 * MEDALLION_SIDE_GAP) / totalUnit);
+    const fontSize = Math.min(MAX_MEDALLION_FONT_SIZE, fontFit);
+    return {
+      fontSize,
+      titleArcLen: titleUnit * fontSize,
+      authorArcLen: authorUnit * fontSize,
+    };
+  };
+  const medallionGeometry = () => {
+    const radius = medallionRadiusInput
+      ? parseFloat(medallionRadiusInput.value)
+      : DEFAULT_MEDALLION_RADIUS;
+    const title = medallionOuterInput ? medallionOuterInput.value : initialMedallionOuter;
+    const author = medallionInnerInput ? medallionInnerInput.value : initialMedallionInner;
+    const layout = computeMedallionLayout(title, author, radius);
+    return {
+      radius,
+      fontSize: layout.fontSize,
+      titleArcLen: layout.titleArcLen,
+      authorArcLen: layout.authorArcLen,
+      showGuides: !!(medallionGuidesInput && medallionGuidesInput.checked),
+    };
+  };
   const initialBarcode = (barcodeInput && barcodeInput.value) || DEFAULT_BARCODE_VALUE;
   const initialTitle = (titleInput && titleInput.value) || DEFAULT_TITLE_TEXT;
   const initialStampValue = (stampValueInput && stampValueInput.value) || DEFAULT_STAMP_VALUE;
@@ -490,10 +537,7 @@ async function main() {
       rebuildMedallion();
     });
   };
-  wireMedallionSlider(medallionOuterFontInput, medallionOuterFontValue);
-  wireMedallionSlider(medallionOuterRadiusInput, medallionOuterRadiusValue);
-  wireMedallionSlider(medallionInnerFontInput, medallionInnerFontValue);
-  wireMedallionSlider(medallionInnerRadiusInput, medallionInnerRadiusValue);
+  wireMedallionSlider(medallionRadiusInput, medallionRadiusValue);
   if (medallionGuidesInput) medallionGuidesInput.addEventListener('change', rebuildMedallion);
 
   function avatarForSelectedOption() {
