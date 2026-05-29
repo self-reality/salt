@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { loadCan } from '../lib/can.js';
+import { loadLabelAssets, createLabelBuild } from '../lib/label-build.js';
 import {
   buildRandomManifestFromDataset,
   buildEntryFromDatasetItem,
@@ -412,10 +413,13 @@ export async function runVanCanScene() {
   // handler below can reference it before the can finishes loading.
   let positionPauseButton = () => {};
 
+  const labelBuild = createLabelBuild(await loadLabelAssets());
+
   loadCan({
     modelPath: CAN_FBX_PATH,
     texturePath: CAN_TEXTURE_PATH,
-    onLoaded({ canGroup, material, setArtworkFromImage, height }) {
+    labelBuild,
+    onLoaded({ canGroup, material, setArtworkEntry, height }) {
       material.envMapIntensity = ENV_MAP_INTENSITY;
 
       canPivot = centerPivot(canGroup, CAN_PIVOT_SCALE);
@@ -484,7 +488,12 @@ export async function runVanCanScene() {
         if (!validItems.length) return;
         const safeIndex = ((index % validItems.length) + validItems.length) % validItems.length;
         const item = validItems[safeIndex];
-        setArtworkFromImage(item, applyStretchY);
+        setArtworkEntry({
+          image: item,
+          title: item._item.name,
+          author: item._item.username,
+          avatarUrl: item._item.avatar,
+        }, applyStretchY);
         updateOverlay(item._item);
       }
 

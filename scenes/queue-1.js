@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadCan } from '../lib/can.js';
+import { loadLabelAssets, createLabelBuild } from '../lib/label-build.js';
 import { setupPixelArtPass } from '../lib/post-processing.js';
 import {
   buildRandomManifestFromDataset,
@@ -172,11 +173,15 @@ export async function runQueue1Scene() {
   const searchButton = document.getElementById('queue-search-btn');
   const searchContainer = document.getElementById('queue-search');
 
+  // --- Full parametrized label builder (artwork + decal chrome) ---
+  const labelBuild = createLabelBuild(await loadLabelAssets());
+
   // --- Load can ---
   loadCan({
     modelPath: MODEL_PATH,
     texturePath: TEXTURE_PATH,
-    onLoaded({ canGroup, material, setArtworkFromImage, width, height, depth }) {
+    labelBuild,
+    onLoaded({ canGroup, material, setArtworkEntry, width, height, depth }) {
       material.envMapIntensity = ENV_MAP_INTENSITY;
       scene.add(canGroup);
       controls.target.set(0, 0, 0);
@@ -243,7 +248,12 @@ export async function runQueue1Scene() {
         if (!validItems.length) return;
         const safeIndex = ((index % validItems.length) + validItems.length) % validItems.length;
         const item = validItems[safeIndex];
-        setArtworkFromImage(item, applyStretchY);
+        setArtworkEntry({
+          image: item,
+          title: item._item.name,
+          author: item._item.username,
+          avatarUrl: item._item.avatar,
+        }, applyStretchY);
         updateOverlay(item._item);
       }
 

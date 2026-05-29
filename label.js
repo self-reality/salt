@@ -1,69 +1,30 @@
 // -----------------------------------------------------------------------------
 // label.js — standalone label-texture builder page (no THREE).
 //
-// Wires the right-side panel and the draggable bottom edge to the pure-2D
-// label-band builder. Reuses the existing colour-extraction and dataset modules.
-// This page develops the texture construction in isolation; the real 3D scenes
-// will import lib/label-texture.js later.
+// Wires the right-side panel and the draggable bottom edge to the headless
+// label build (lib/label-build.js), which owns the SVG fetch + medallion /
+// side-text / stamp / barcode composition. This page is just the DOM surface;
+// the 3D scenes drive the same lib/label-build.js with dataset metadata.
 // -----------------------------------------------------------------------------
 
 import { deriveColors } from './lib/color-extraction.js';
 import { buildRandomManifestFromDataset } from './lib/dataset.js';
+import { loadLabelAssets, createLabelBuild } from './lib/label-build.js';
 import {
-  createLabelTexture,
-  bandHeightForArtwork,
-  ELEMENT_FILES,
   TEX_WIDTH,
   BAND_TOP,
-  DEFAULT_BAND_HEIGHT,
+  bandHeightForArtwork,
   DEFAULT_SMITHS_TEXT,
 } from './lib/label-texture.js';
-import { generateBarcodeSvg, DEFAULT_BARCODE_VALUE } from './lib/barcode.js';
-import {
-  generateSideTextSvg,
-  loadPacificoDataUrl,
-  computeSideLayout,
-  SIDE_FRAME_WIDTH,
-  PRESERVED_FILE,
-  TITLE_FILE,
-  DEFAULT_PRESERVED_TEXT,
-  DEFAULT_TITLE_TEXT,
-} from './lib/side-text.js';
-import {
-  injectStampText,
-  STAMP_FILE,
-  DEFAULT_STAMP_VALUE,
-  DEFAULT_STAMP_UNIT,
-} from './lib/stamp.js';
-import {
-  generateDatamatrixSvg,
-  DATAMATRIX_FILE,
-  DEFAULT_DATAMATRIX_VALUE,
-} from './lib/datamatrix.js';
-import {
-  CIRCLE_FILE,
-  loadAvatarDataUrl,
-  injectCircleAvatar,
-} from './lib/circle-avatar.js';
-import {
-  injectMedallionText,
-  DEFAULT_MEDALLION_OUTER_TEXT,
-  DEFAULT_MEDALLION_INNER_TEXT,
-  DEFAULT_MEDALLION_RADIUS,
-  MAX_MEDALLION_FONT_SIZE,
-} from './lib/medallion-text.js';
 
 // Same dataset the queue/test scenes draw from — the only one carrying the
 // localFilename/width/height fields needed to load an artwork from /artworks.
 const DATASET_PATH = 'queue/most-expensive-artworks.json';
 const ARTWORK_BASE_PATH = 'artworks/';
-const ELEMENTS_BASE_PATH = 'elements/svg elements/';
 const ARTWORK_SAMPLE_SIZE = 12;
-const MIN_BAND = 200;
-const MAX_BAND = 4000;
 
 async function main() {
-  // ---- Up-front fetches: random artwork pool + the decal source ------------
+  // ---- Up-front fetches: random artwork pool + the label build assets ------
   let dataset = [];
   try {
     dataset = await fetch(DATASET_PATH).then((r) => r.json());
@@ -71,54 +32,14 @@ async function main() {
     console.warn('label: could not load artwork dataset', err);
   }
 
-  // Each Decal element is its own SVG, composited as an anchored layer by the
-  // builder. Fetch them independently so one missing file can't blank the whole
-  // decal — whatever loads gets composited; failures are logged by name.
-  const elementSvgs = {};
-  await Promise.all(
-    ELEMENT_FILES.map(async (file) => {
-      try {
-        // `cache: 'no-cache'` forces a conditional revalidation on each load —
-        // ⌘⇧R reloads label.html but Chrome/Safari can still serve stale SVG
-        // sub-resources from disk cache, which masked our Stamp.svg edits.
-        const res = await fetch(
-          ELEMENTS_BASE_PATH + encodeURIComponent(file),
-          { cache: 'no-cache' },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        elementSvgs[file] = await res.text();
-      } catch (err) {
-        console.warn(`label: could not load decal element "${file}"`, err);
-      }
-    }),
-  );
+  // One-time fetch of every element SVG + Pacifico, then a headless build
+  // around them. createLabelBuild seeds a complete default label; the panel
+  // values below (which match the lib defaults) are pushed in so the HTML
+  // stays authoritative for the initial paint.
+  const assets = await loadLabelAssets();
+  const lb = createLabelBuild(assets);
 
-  // ---- Builder + on-screen canvas ------------------------------------------
-  const builder = createLabelTexture();
-
-  // Pacifico for the two live side-text labels — best-effort fetch, the SVG
-  // generator falls back to system cursive if it can't load. Resolves before
-  // setElements() so the initial paint already carries the embedded font.
-  const pacificoDataUrl = await loadPacificoDataUrl();
-
-  // Also register Pacifico with the page so canvas measureText (used by the
-  // medallion auto-sizer below) returns Pacifico metrics instead of falling
-  // back to system cursive. Embedding the font into each SVG covers the
-  // rasterisation pipeline, but document.fonts is its own world.
-  if (pacificoDataUrl && typeof FontFace !== 'undefined' && document.fonts) {
-    try {
-      const face = new FontFace('Pacifico', `url(${pacificoDataUrl})`);
-      await face.load();
-      document.fonts.add(face);
-    } catch (err) {
-      console.warn('label: could not register Pacifico with document.fonts', err);
-    }
-  }
-
-  // Override the static Barcode.svg + the two path-baked side-text SVGs with
-  // freshly-generated ones so the initial paint matches the side-panel inputs.
-  // Stamp.svg ships without its lower text block — inject it here from the
-  // value/unit inputs (the "NET WT" header is baked in by lib/stamp.js).
+  // ---- Variables panel inputs ----------------------------------------------
   const barcodeInput = document.getElementById('barcode-text');
   const titleInput = document.getElementById('title-text');
   const stampValueInput = document.getElementById('stamp-value');
@@ -130,168 +51,84 @@ async function main() {
   const medallionRadiusValue = document.getElementById('medallion-radius-value');
   const medallionGuidesInput = document.getElementById('medallion-guides');
 
-  // Title + author share one circle and one font size. The font size is the
-  // largest value (capped at MAX_MEDALLION_FONT_SIZE) at which both rendered
-  // strings plus a small gap on each side still fit on the circumference.
-  // SIDE_GAP keeps the title's left/right ends from butting against the
-  // author's at the 9- and 3-o'clock positions when both strings are long.
-  const medallionMeasureCanvas = document.createElement('canvas');
-  const medallionMeasureCtx = medallionMeasureCanvas.getContext('2d');
-  const measureMedallionWidth = (text, fontSize) => {
-    medallionMeasureCtx.font = `${fontSize}px Pacifico, cursive`;
-    return medallionMeasureCtx.measureText(text || '').width;
-  };
-  const MEDALLION_SIDE_GAP = 40; // arc length per side, in SVG user units
-  const computeMedallionLayout = (title, author, radius) => {
-    // Measure at a reference size and scale linearly — text metrics scale
-    // proportionally with font-size, so one measurement per string suffices.
-    const refSize = 100;
-    const titleUnit = measureMedallionWidth(title, refSize) / refSize;
-    const authorUnit = measureMedallionWidth(author, refSize) / refSize;
-    const totalUnit = Math.max(titleUnit + authorUnit, 1e-6);
-    const circumference = 2 * Math.PI * radius;
-    const fontFit = Math.max(0, (circumference - 2 * MEDALLION_SIDE_GAP) / totalUnit);
-    const fontSize = Math.min(MAX_MEDALLION_FONT_SIZE, fontFit);
-    return {
-      fontSize,
-      titleArcLen: titleUnit * fontSize,
-      authorArcLen: authorUnit * fontSize,
-    };
-  };
-  const medallionGeometry = () => {
-    const radius = medallionRadiusInput
-      ? parseFloat(medallionRadiusInput.value)
-      : DEFAULT_MEDALLION_RADIUS;
-    const title = medallionOuterInput ? medallionOuterInput.value : initialMedallionOuter;
-    const author = medallionInnerInput ? medallionInnerInput.value : initialMedallionInner;
-    const layout = computeMedallionLayout(title, author, radius);
-    return {
-      radius,
-      fontSize: layout.fontSize,
-      titleArcLen: layout.titleArcLen,
-      authorArcLen: layout.authorArcLen,
-      showGuides: !!(medallionGuidesInput && medallionGuidesInput.checked),
-    };
-  };
-  const initialBarcode = (barcodeInput && barcodeInput.value) || DEFAULT_BARCODE_VALUE;
-  const initialTitle = (titleInput && titleInput.value) || DEFAULT_TITLE_TEXT;
-  const initialStampValue = (stampValueInput && stampValueInput.value) || DEFAULT_STAMP_VALUE;
-  const initialStampUnit = (stampUnitInput && stampUnitInput.value) || DEFAULT_STAMP_UNIT;
-  const initialDatamatrix =
-    (datamatrixInput && datamatrixInput.value) || DEFAULT_DATAMATRIX_VALUE;
-  const initialMedallionOuter =
-    (medallionOuterInput && medallionOuterInput.value) || DEFAULT_MEDALLION_OUTER_TEXT;
-  const initialMedallionInner =
-    (medallionInnerInput && medallionInnerInput.value) || DEFAULT_MEDALLION_INNER_TEXT;
-  elementSvgs['Barcode.svg'] = generateBarcodeSvg(initialBarcode);
-  elementSvgs[DATAMATRIX_FILE] = generateDatamatrixSvg(initialDatamatrix);
+  // Push the panel's current medallion fields into the build (title, author,
+  // radius, guides). setMedallion merges, so calling on any single edit is fine.
+  const pushMedallion = () => lb.setMedallion({
+    title: medallionOuterInput ? medallionOuterInput.value : undefined,
+    author: medallionInnerInput ? medallionInnerInput.value : undefined,
+    radius: medallionRadiusInput ? parseFloat(medallionRadiusInput.value) : undefined,
+    showGuides: medallionGuidesInput ? medallionGuidesInput.checked : undefined,
+  });
 
-  // Side text: pick a shared font size + per-SVG heights that fit "preserved"
-  // and the title in the band-height column (OUTER_PAD | preserved | MIN_GAP |
-  // title | OUTER_PAD = bandHeight). The block width is the live band height,
-  // so the layout follows the slider — sideLayoutFor takes the current value.
-  const sideLayoutFor = (titleText, bandHeight) => {
-    const layout = computeSideLayout(titleText, bandHeight);
-    const preservedSvg = generateSideTextSvg(
-      DEFAULT_PRESERVED_TEXT,
-      { width: SIDE_FRAME_WIDTH, height: layout.preservedHeight, fontSize: layout.fontSize },
-      pacificoDataUrl,
-    );
-    const titleSvg = generateSideTextSvg(
-      titleText,
-      { width: SIDE_FRAME_WIDTH, height: layout.titleHeight, fontSize: layout.fontSize },
-      pacificoDataUrl,
-    );
-    return { layout, preservedSvg, titleSvg };
-  };
-  const initialSide = sideLayoutFor(initialTitle, builder.bandHeight);
-  elementSvgs[PRESERVED_FILE] = initialSide.preservedSvg;
-  elementSvgs[TITLE_FILE] = initialSide.titleSvg;
-  // Keep the bare Stamp.svg around — re-injection on every edit reads from it.
-  const baseStampSvg = elementSvgs[STAMP_FILE] || '';
-  elementSvgs[STAMP_FILE] = injectStampText(baseStampSvg, initialStampValue, initialStampUnit);
-  // Same pattern for Circle.svg: cache the unmodified source, then ship the
-  // empty-disc fallback in the initial paint so the bundled placeholder PNG
-  // never shows. Once an artwork loads, setAvatar() swaps in the real avatar.
-  // Avatar + medallion text both rewrite the same file, so rebuildCircle()
-  // composes the two transforms against the most recent inputs and updates the
-  // layer. circleAvatarDataUrl is the latest resolved avatar (null = empty
-  // disc); the medallion strings live on the side-panel inputs.
-  const baseCircleSvg = elementSvgs[CIRCLE_FILE] || '';
-  let circleAvatarDataUrl = null;
-  const composeCircleSvg = () => injectMedallionText(
-    injectCircleAvatar(baseCircleSvg, circleAvatarDataUrl),
-    medallionOuterInput ? medallionOuterInput.value : initialMedallionOuter,
-    medallionInnerInput ? medallionInnerInput.value : initialMedallionInner,
-    pacificoDataUrl,
-    medallionGeometry(),
+  // Seed the build from the HTML input values (they match the lib defaults, but
+  // reading them keeps the markup authoritative).
+  const pushStamp = () => lb.setStamp(
+    stampValueInput ? stampValueInput.value : '',
+    stampUnitInput ? stampUnitInput.value : '',
   );
-  elementSvgs[CIRCLE_FILE] = injectMedallionText(
-    injectCircleAvatar(baseCircleSvg, null),
-    initialMedallionOuter,
-    initialMedallionInner,
-    pacificoDataUrl,
-    medallionGeometry(),
-  );
-  builder.setElements(elementSvgs);
-  // Preserved's yTop is constant (text top pinned at OUTER_PAD); title's yTop
-  // tracks its dynamic SVG height so the text bottom stays at H − OUTER_PAD.
-  builder.setLayerYTop(PRESERVED_FILE, initialSide.layout.preservedYTop);
-  builder.setLayerYTop(TITLE_FILE, initialSide.layout.titleYTop);
+  if (barcodeInput) lb.setBarcode(barcodeInput.value);
+  if (datamatrixInput) lb.setDatamatrix(datamatrixInput.value);
+  pushStamp();
+  if (titleInput) lb.setSideTitle(titleInput.value);
+  pushMedallion();
 
-  // Re-layout both side labels for the current title + current band height.
-  // Called on title keystroke and on every band-height change so the column
-  // formula 50 + preserved + 15 + title + 50 = bandHeight stays satisfied.
-  const rebuildSideText = () => {
-    const titleText = titleInput ? titleInput.value : DEFAULT_TITLE_TEXT;
-    const { layout, preservedSvg, titleSvg } =
-      sideLayoutFor(titleText, builder.bandHeight);
-    builder.setLayerYTop(PRESERVED_FILE, layout.preservedYTop);
-    builder.setLayerYTop(TITLE_FILE, layout.titleYTop);
-    builder.setElement(PRESERVED_FILE, preservedSvg);
-    builder.setElement(TITLE_FILE, titleSvg);
-  };
-
+  // ---- Variables panel live edits ------------------------------------------
   if (barcodeInput) {
-    barcodeInput.addEventListener('input', () => {
-      builder.setElement('Barcode.svg', generateBarcodeSvg(barcodeInput.value));
-    });
+    barcodeInput.addEventListener('input', () => lb.setBarcode(barcodeInput.value));
   }
-  if (titleInput) titleInput.addEventListener('input', rebuildSideText);
-  const rebuildStamp = () => {
-    const value = stampValueInput ? stampValueInput.value : initialStampValue;
-    const unit = stampUnitInput ? stampUnitInput.value : initialStampUnit;
-    builder.setElement(STAMP_FILE, injectStampText(baseStampSvg, value, unit));
-  };
-  if (stampValueInput) stampValueInput.addEventListener('input', rebuildStamp);
-  if (stampUnitInput) stampUnitInput.addEventListener('input', rebuildStamp);
-
+  if (titleInput) titleInput.addEventListener('input', () => lb.setSideTitle(titleInput.value));
+  if (stampValueInput) stampValueInput.addEventListener('input', pushStamp);
+  if (stampUnitInput) stampUnitInput.addEventListener('input', pushStamp);
   if (datamatrixInput) {
-    datamatrixInput.addEventListener('input', () => {
-      builder.setElement(DATAMATRIX_FILE, generateDatamatrixSvg(datamatrixInput.value));
-    });
+    datamatrixInput.addEventListener('input', () => lb.setDatamatrix(datamatrixInput.value));
   }
+  if (medallionOuterInput) medallionOuterInput.addEventListener('input', pushMedallion);
+  if (medallionInnerInput) medallionInnerInput.addEventListener('input', pushMedallion);
 
-  // Smiths description — the long passage that wraps the can vertically, lives
-  // as live HTML inside the builder. Seed the textarea with the default so the
-  // panel shows what's painted; pipe edits straight back into the builder.
+  const wireMedallionSlider = (input, valueEl) => {
+    if (!input) return;
+    input.addEventListener('input', () => {
+      if (valueEl) valueEl.textContent = input.value;
+      pushMedallion();
+    });
+  };
+  wireMedallionSlider(medallionRadiusInput, medallionRadiusValue);
+  if (medallionGuidesInput) medallionGuidesInput.addEventListener('change', pushMedallion);
+
+  // Inner Circle ↕ neighbours min spacings — drive builder.setMinSpacings()
+  // so the top-trio layout in lib/label-texture.js reflows live as you drag.
+  const spacingAboveInput = document.getElementById('inner-circle-spacing-above');
+  const spacingBelowInput = document.getElementById('inner-circle-spacing-below');
+  const spacingAboveValue = document.getElementById('inner-circle-spacing-above-value');
+  const spacingBelowValue = document.getElementById('inner-circle-spacing-below-value');
+  const wireSpacingSlider = (input, valueEl, key) => {
+    if (!input) return;
+    input.addEventListener('input', () => {
+      if (valueEl) valueEl.textContent = input.value;
+      lb.setMinSpacings({ [key]: parseFloat(input.value) });
+    });
+  };
+  wireSpacingSlider(spacingAboveInput, spacingAboveValue, 'above');
+  wireSpacingSlider(spacingBelowInput, spacingBelowValue, 'below');
+
+  // Smiths description — the long passage that wraps the can vertically. Seed
+  // the textarea with the default the build already starts with; pipe edits in.
   const smithsInput = document.getElementById('smiths-text');
   if (smithsInput) {
     smithsInput.value = DEFAULT_SMITHS_TEXT;
-    smithsInput.addEventListener('input', () => {
-      builder.setSmithsText(smithsInput.value);
-    });
+    smithsInput.addEventListener('input', () => lb.setSmithsText(smithsInput.value));
   }
 
+  // ---- On-screen canvas ----------------------------------------------------
   const wrap = document.getElementById('canvas-wrap');
   const handle = document.getElementById('resize-handle');
   const readout = document.getElementById('stage-readout');
-  wrap.insertBefore(builder.canvas, handle);
+  wrap.insertBefore(lb.canvas, handle);
 
   const updateReadout = () => {
     if (readout) {
       readout.textContent =
-        `${TEX_WIDTH} × ${builder.bandHeight} px · band ${BAND_TOP} px from texture top`;
+        `${TEX_WIDTH} × ${lb.bandHeight} px · band ${BAND_TOP} px from texture top`;
     }
   };
 
@@ -364,7 +201,7 @@ async function main() {
       ? '⚠ Can’t read this image’s pixels (page on file:// or cross-origin artwork). Dominant falls back to black/white — serve the page over http://localhost.'
       : '';
     const trio = { ...baseTrio(), ...overrides };
-    builder.setColors(trio);
+    lb.setColors(trio);
     if (bgInput) bgInput.value = trio.background;
     if (textInput) textInput.value = trio.text;
     if (outlineInput) outlineInput.value = trio.outline;
@@ -402,19 +239,14 @@ async function main() {
   const bandInput = document.getElementById('band-height');
 
   function setBand(px, { syncInput = true } = {}) {
-    const clamped = Math.max(MIN_BAND, Math.min(MAX_BAND, Math.round(px)));
-    builder.setBandHeight(clamped);
+    const clamped = lb.setBand(px); // clamps + re-lays out the side text
     if (syncInput && bandInput) bandInput.value = String(clamped);
     updateReadout();
-    // Block width = bandHeight: the side-text font size + layer positions both
-    // depend on it, so re-lay-out whenever the band height changes (slider
-    // drag, numeric input, or auto-fit when a new artwork loads).
-    rebuildSideText();
     return clamped;
   }
 
   if (bandInput) {
-    bandInput.value = String(DEFAULT_BAND_HEIGHT);
+    bandInput.value = String(lb.bandHeight);
     bandInput.addEventListener('input', () => {
       const v = parseInt(bandInput.value, 10);
       if (Number.isFinite(v)) setBand(v, { syncInput: false });
@@ -433,13 +265,13 @@ async function main() {
   handle.addEventListener('pointerdown', (e) => {
     dragging = true;
     startY = e.clientY;
-    startBand = builder.bandHeight;
+    startBand = lb.bandHeight;
     handle.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
   handle.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    const displayScale = builder.canvas.clientWidth / TEX_WIDTH;
+    const displayScale = lb.canvas.clientWidth / TEX_WIDTH;
     pendingBand = startBand + (e.clientY - startY) / (displayScale || 1);
     if (!rafPending) { rafPending = true; requestAnimationFrame(flushDrag); }
   });
@@ -456,7 +288,7 @@ async function main() {
   // artwork's aspect ratio (so it isn't distorted); the user can then drag.
   function loadArtwork(img) {
     lastArtwork = img;
-    builder.setArtwork(img);
+    lb.setArtworkImage(img);
     setBand(bandHeightForArtwork(img));
     if (!autoCheckbox || autoCheckbox.checked) apply();
   }
@@ -480,7 +312,7 @@ async function main() {
       img.src = url;
       // User-supplied file has no associated author — show the empty-disc
       // fallback rather than whatever avatar was on screen before.
-      setAvatar(null);
+      lb.setAvatar(null);
     });
   }
 
@@ -509,53 +341,6 @@ async function main() {
     return samples;
   }
 
-  // Re-rasterise Circle.svg with the given avatar URL embedded. A stale-token
-  // guard keeps a slow fetch from clobbering a later, faster selection.
-  let circleAvatarToken = 0;
-  function setAvatar(url) {
-    const token = ++circleAvatarToken;
-    loadAvatarDataUrl(url).then((dataUrl) => {
-      if (token !== circleAvatarToken) return;
-      circleAvatarDataUrl = dataUrl;
-      builder.setElement(CIRCLE_FILE, composeCircleSvg());
-    });
-  }
-
-  // Side-panel typing into either medallion field re-renders Circle.svg with
-  // both transforms reapplied — composeCircleSvg() reads whatever's currently
-  // in the avatar slot, so the avatar isn't lost between keystrokes.
-  const rebuildMedallion = () => {
-    builder.setElement(CIRCLE_FILE, composeCircleSvg());
-  };
-  if (medallionOuterInput) medallionOuterInput.addEventListener('input', rebuildMedallion);
-  if (medallionInnerInput) medallionInnerInput.addEventListener('input', rebuildMedallion);
-
-  const wireMedallionSlider = (input, valueEl) => {
-    if (!input) return;
-    input.addEventListener('input', () => {
-      if (valueEl) valueEl.textContent = input.value;
-      rebuildMedallion();
-    });
-  };
-  wireMedallionSlider(medallionRadiusInput, medallionRadiusValue);
-  if (medallionGuidesInput) medallionGuidesInput.addEventListener('change', rebuildMedallion);
-
-  // Inner Circle ↕ neighbours min spacings — drive builder.setMinSpacings()
-  // so the top-trio layout in lib/label-texture.js reflows live as you drag.
-  const spacingAboveInput = document.getElementById('inner-circle-spacing-above');
-  const spacingBelowInput = document.getElementById('inner-circle-spacing-below');
-  const spacingAboveValue = document.getElementById('inner-circle-spacing-above-value');
-  const spacingBelowValue = document.getElementById('inner-circle-spacing-below-value');
-  const wireSpacingSlider = (input, valueEl, key) => {
-    if (!input) return;
-    input.addEventListener('input', () => {
-      if (valueEl) valueEl.textContent = input.value;
-      builder.setMinSpacings({ [key]: parseFloat(input.value) });
-    });
-  };
-  wireSpacingSlider(spacingAboveInput, spacingAboveValue, 'above');
-  wireSpacingSlider(spacingBelowInput, spacingBelowValue, 'below');
-
   function avatarForSelectedOption() {
     if (!artworkSelect) return null;
     const opt = artworkSelect.options[artworkSelect.selectedIndex];
@@ -566,7 +351,7 @@ async function main() {
     artworkSelect.addEventListener('change', () => {
       if (artworkSelect.value) {
         loadArtworkFromUrl(artworkSelect.value);
-        setAvatar(avatarForSelectedOption());
+        lb.setAvatar(avatarForSelectedOption());
       }
     });
   }
@@ -586,7 +371,7 @@ async function main() {
     artworkSelect.selectedIndex = i;
     if (artworkSelect.value) {
       loadArtworkFromUrl(artworkSelect.value);
-      setAvatar(avatarForSelectedOption());
+      lb.setAvatar(avatarForSelectedOption());
     }
   }
 
@@ -606,7 +391,7 @@ async function main() {
   if (samples.length && artworkSelect) {
     artworkSelect.selectedIndex = 1; // index 0 is the placeholder
     loadArtworkFromUrl(artworkSelect.value);
-    setAvatar(avatarForSelectedOption());
+    lb.setAvatar(avatarForSelectedOption());
   } else {
     apply(); // no artwork: still paint the band + decal with default colours
   }

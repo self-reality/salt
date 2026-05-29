@@ -13,6 +13,7 @@ import {
   resetStretch,
 } from '../controls.js';
 import { loadCan } from '../lib/can.js';
+import { loadLabelAssets, createLabelBuild } from '../lib/label-build.js';
 import { setupPixelArtPass } from '../lib/post-processing.js';
 import { setupPixelArtControls } from '../controls.js';
 import { buildRandomManifestFromDataset } from '../lib/dataset.js';
@@ -87,10 +88,15 @@ export async function runTestScene() {
   // ---------------------------------------------------------------------------
   // Load can
   // ---------------------------------------------------------------------------
+  // Full parametrized label builder (artwork + decal chrome), shared with the
+  // queue scenes via lib/label-build.js.
+  const labelBuild = createLabelBuild(await loadLabelAssets());
+
   loadCan({
     modelPath: 'bennyrizzo - 1950s-spam/source/Spam can.fbx',
     texturePath: 'bennyrizzo - 1950s-spam/textures/',
-    onLoaded({ canGroup, material, setArtwork, setArtworkFromUrl, setBaseTexture, clearArtwork, width, height, depth }) {
+    labelBuild,
+    onLoaded({ canGroup, material, setArtworkEntry, setBaseTexture, clearArtwork, width, height, depth }) {
       // Wire up wireframe toggle and environment controls now that material is ready
       setupWireframeToggle(material);
       setupEnvironmentControls(renderer, scene, material);
@@ -104,12 +110,36 @@ export async function runTestScene() {
 
       document.getElementById('loading').classList.add('hidden');
 
-      // Decal file input
+      // Loads an artwork URL into an image, then composites the full label for
+      // it. `item` carries the dataset metadata (name/username/avatar) for the
+      // medallion + side title; a user upload has none, so those fall back to
+      // empty rings and the empty-disc avatar.
+      function applyArtworkEntry(url, item) {
+        const img = new Image();
+        img.onload = () => setArtworkEntry({
+          image: img,
+          title: item ? item.name : '',
+          author: item ? item.username : '',
+          avatarUrl: item ? item.avatar : null,
+        }, setStretchYFromFactor);
+        img.onerror = () => console.error('Failed to load artwork:', url);
+        img.src = url;
+      }
+
+      // Decal file input — a user upload (no dataset metadata).
       const decalInput = document.getElementById('decal-file');
       if (decalInput) {
         decalInput.addEventListener('change', (event) => {
           const file = event.target.files && event.target.files[0];
-          if (file) setArtwork(file, setStretchYFromFactor);
+          if (!file) return;
+          const url = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => {
+            setArtworkEntry({ image: img, title: '', author: '', avatarUrl: null }, setStretchYFromFactor);
+            URL.revokeObjectURL(url);
+          };
+          img.onerror = () => URL.revokeObjectURL(url);
+          img.src = url;
         });
       }
 
@@ -146,7 +176,7 @@ export async function runTestScene() {
       function applySelection(value) {
         const artwork = artworkByValue.get(value);
         if (artwork) {
-          setArtworkFromUrl(ARTWORK_BASE_PATH + artwork.filename, setStretchYFromFactor);
+          applyArtworkEntry(ARTWORK_BASE_PATH + artwork.filename, artwork);
         } else {
           clearArtwork();
           resetStretch();
