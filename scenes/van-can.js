@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { loadCan } from '../lib/can.js';
 import {
@@ -13,7 +14,7 @@ import {
 // ---------------------------------------------------------------------------
 // Asset paths
 // ---------------------------------------------------------------------------
-const VAN_FBX_PATH = 'van/apocalyptic-old-van-driveable-with-interior/source/Van.fbx';
+const VAN_GLB_PATH = 'van/apocalyptic-old-van-driveable-with-interior/source/Van.glb';
 const CAN_FBX_PATH = 'bennyrizzo - 1950s-spam/source/Spam can.fbx';
 const CAN_TEXTURE_PATH = 'bennyrizzo - 1950s-spam/textures/';
 const ARTWORK_BASE_PATH = 'artworks/';
@@ -370,9 +371,13 @@ export async function runVanCanScene() {
   // --- Van ---
   const vanMaterials = buildVanMaterials();
 
-  new FBXLoader().load(
-    VAN_FBX_PATH,
-    (van) => {
+  const vanDraco = new DRACOLoader().setDecoderPath(
+    'https://unpkg.com/three@0.164.1/examples/jsm/libs/draco/',
+  );
+  new GLTFLoader().setDRACOLoader(vanDraco).load(
+    VAN_GLB_PATH,
+    (gltf) => {
+      const van = gltf.scene;
       applyVanMaterials(van, vanMaterials);
 
       const nativeSize = meshBoundsAtIdentity(van);
@@ -381,7 +386,7 @@ export async function runVanCanScene() {
       blenderRoot.add(vanPivot);
       applyTransforms();
 
-      console.log('[van-can] van FBX loaded', {
+      console.log('[van-can] van GLB loaded', {
         nativeSize: [nativeSize.x, nativeSize.y, nativeSize.z],
         scaleFactor,
         finalSize: [nativeSize.x * scaleFactor, nativeSize.y * scaleFactor, nativeSize.z * scaleFactor],
@@ -391,10 +396,10 @@ export async function runVanCanScene() {
     },
     (xhr) => {
       if (xhr.lengthComputable) {
-        console.log(`[van-can] van FBX ${(xhr.loaded / xhr.total * 100).toFixed(0)}%`);
+        console.log(`[van-can] van GLB ${(xhr.loaded / xhr.total * 100).toFixed(0)}%`);
       }
     },
-    (err) => console.error('[van-can] van FBX failed to load:', err),
+    (err) => console.error('[van-can] van GLB failed to load:', err),
   );
 
   // --- Can (loaded via shared loadCan: PBR material + decal canvas pipeline) ---
