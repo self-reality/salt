@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <!-- The page lives under /scripts/ but the lib's default asset base paths
+       ('elements/svg elements/', 'elements/…') are authored relative to the
+       document. <base href="/"> makes every relative URL resolve against the
+       server root so those defaults keep working with zero lib changes. -->
+  <base href="/" />
+  <title>Prerender (headless)</title>
+</head>
+<body>
+  <script type="module" src="/scripts/prerender-page.js"></script>
+</body>
+</html>

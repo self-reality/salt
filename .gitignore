@@ -33,11 +33,17 @@ pids
 # Optional eslint cache
 .eslintcache
 
+# Dependencies
+node_modules/
+
 # Build outputs
 dist/
 build/
 *.min.js
 *.min.css
+
+# Prerendered texture output
+prerender-out/
 
 # Temporary files
 *.tmp
