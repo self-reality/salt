@@ -25,11 +25,22 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const DATASET_PATH = path.join(REPO_ROOT, 'queue', 'most-expensive-artworks.json');
 const BASE_TEXTURE_REL = 'bennyrizzo - 1950s-spam/textures/BaseColor.png';
 
+// Per-output spec: which page result key carries the base64 blob, where it's
+// written (subdir + extension) and the manifest field that records its path.
+const OUTPUT_SPEC = {
+  band:             { dir: 'bands',           ext: '.png', key: 'bandPngDataUrl',         field: 'band' },
+  texture:          { dir: 'cans',            ext: '.png', key: 'fullPngDataUrl',         field: 'texture' },
+  model:            { dir: 'models',          ext: '.glb', key: 'modelGlbB64',            field: 'model' },
+  'model-textured': { dir: 'models-textured', ext: '.glb', key: 'modelTexturedGlbB64',   field: 'modelTextured' },
+};
+const ALL_OUTPUTS = Object.keys(OUTPUT_SPEC);
+
 // ---- CLI -------------------------------------------------------------------
 function parseArgs(argv) {
   const opts = {
     limit: Infinity, start: 0, force: false, concurrency: 1,
     port: 8970, out: path.join(REPO_ROOT, 'prerender-out'),
+    outputs: [...ALL_OUTPUTS],
   };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
@@ -40,7 +51,12 @@ function parseArgs(argv) {
     else if (a === '--concurrency') opts.concurrency = Math.max(1, parseInt(next(), 10));
     else if (a === '--port') opts.port = parseInt(next(), 10);
     else if (a === '--out') opts.out = path.resolve(next());
-    else throw new Error(`unknown flag: ${a}`);
+    else if (a === '--outputs') {
+      opts.outputs = next().split(',').map((s) => s.trim()).filter(Boolean);
+      const bad = opts.outputs.filter((o) => !ALL_OUTPUTS.includes(o));
+      if (bad.length) throw new Error(`unknown --outputs value(s): ${bad.join(', ')} (valid: ${ALL_OUTPUTS.join(', ')})`);
+      if (!opts.outputs.length) throw new Error('--outputs needs at least one value');
+    } else throw new Error(`unknown flag: ${a}`);
   }
   return opts;
 }
@@ -142,11 +158,9 @@ async function newReadyPage(browser, pageUrl) {
 // ---- Main -------------------------------------------------------------------
 async function main() {
   const opts = parseArgs(process.argv);
-  const bandsDir = path.join(opts.out, 'bands');
-  const cansDir = path.join(opts.out, 'cans');
   const manifestPath = path.join(opts.out, 'manifest.json');
-  await fs.mkdir(bandsDir, { recursive: true });
-  await fs.mkdir(cansDir, { recursive: true });
+  const specs = opts.outputs.map((o) => OUTPUT_SPEC[o]);
+  for (const spec of specs) await fs.mkdir(path.join(opts.out, spec.dir), { recursive: true });
 
   // Reuse lib/dataset.js's validator/mapper so entries match the scenes exactly.
   const { buildEntryFromDatasetItem } = await import(
@@ -168,7 +182,12 @@ async function main() {
   const server = await startServer(opts.port);
   const pageUrl = `http://127.0.0.1:${opts.port}/scripts/prerender.html`;
   console.log(`serving ${REPO_ROOT} at ${pageUrl}`);
-  console.log(`rendering ${items.length} artwork(s) → ${opts.out} (concurrency ${opts.concurrency})\n`);
+  console.log(`rendering ${items.length} artwork(s) → ${opts.out} (concurrency ${opts.concurrency})`);
+  console.log(`outputs: ${opts.outputs.join(', ')}`);
+  if (opts.outputs.includes('model-textured')) {
+    console.log('note: model-textured GLBs are ~5-6 MB each (BaseColor dominates).');
+  }
+  console.log('');
 
   const browser = await launchBrowser();
 
@@ -185,45 +204,54 @@ async function main() {
         if (i >= items.length) break;
         const item = items[i];
         const base = baseName(item.filename);
-        const bandPath = path.join(bandsDir, `${base}.png`);
-        const canPath = path.join(cansDir, `${base}.png`);
         const label = `[${i + 1}/${items.length}] ${base}`;
+        // Per selected output: absolute write path + manifest-relative path.
+        const targets = specs.map((spec) => ({
+          spec,
+          abs: path.join(opts.out, spec.dir, `${base}${spec.ext}`),
+          rel: `${spec.dir}/${base}${spec.ext}`,
+        }));
 
-        if (!opts.force && (await fileExists(bandPath)) && (await fileExists(canPath))) {
-          const kept = prior.get(base) || {
-            localFilename: item.filename, base, title: item.name, author: item.username,
-            avatarUrl: item.avatar, band: `bands/${base}.png`, can: `cans/${base}.png`,
-            width: item.width, height: item.height, skipped: true,
-          };
-          results[i] = kept; skipCount += 1;
+        // Base manifest entry shared by skip/render/error paths; every output
+        // field starts null and is filled when that file lands.
+        const entry = {
+          localFilename: item.filename, base, title: item.name, author: item.username,
+          avatarUrl: item.avatar, width: item.width, height: item.height,
+        };
+        for (const o of ALL_OUTPUTS) entry[OUTPUT_SPEC[o].field] = null;
+
+        // Skip only when ALL selected outputs already exist.
+        if (!opts.force && (await Promise.all(targets.map((t) => fileExists(t.abs)))).every(Boolean)) {
+          const kept = prior.get(base);
+          for (const t of targets) entry[t.spec.field] = t.rel;
+          results[i] = kept ? { ...kept, ...entry, skipped: true } : { ...entry, skipped: true };
+          skipCount += 1;
           console.log(`${label} — skipped (exists)`);
           continue;
         }
 
         const t0 = Date.now();
         const r = await page.evaluate(
-          (e) => window.__prerenderOne(e),
+          (e, outs) => window.__prerenderOne(e, outs),
           { filename: item.filename, title: item.name, author: item.username, avatarUrl: item.avatar },
+          opts.outputs,
         );
 
         if (r && r.error) {
-          results[i] = {
-            localFilename: item.filename, base, title: item.name, author: item.username,
-            avatarUrl: item.avatar, width: item.width, height: item.height, error: r.error,
-          };
+          results[i] = { ...entry, error: r.error };
           errCount += 1;
           console.warn(`${label} — ERROR: ${r.error}`);
           continue;
         }
 
-        await fs.writeFile(bandPath, dataUrlToBuffer(r.bandPngDataUrl));
-        await fs.writeFile(canPath, dataUrlToBuffer(r.fullPngDataUrl));
+        for (const t of targets) {
+          await fs.writeFile(t.abs, dataUrlToBuffer(r[t.spec.key]));
+          entry[t.spec.field] = t.rel;
+        }
         if (!r.avatarOk) avatarMiss += 1;
         results[i] = {
-          localFilename: item.filename, base, title: item.name, author: item.username,
-          avatarUrl: item.avatar, avatarOk: r.avatarOk, bandHeight: r.bandHeight,
-          stretchY: r.stretchY, colors: r.colors, band: `bands/${base}.png`,
-          can: `cans/${base}.png`, width: item.width, height: item.height, error: null,
+          ...entry, avatarOk: r.avatarOk, bandHeight: r.bandHeight,
+          stretchY: r.stretchY, colors: r.colors, error: null,
         };
         okCount += 1;
         console.log(

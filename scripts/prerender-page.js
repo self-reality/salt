@@ -91,35 +91,58 @@ function compositeFullCan(band) {
   return decal;
 }
 
+// Model support is loaded lazily so texture-only runs never import THREE.
+let modelMod = null;
+async function ensureModel() {
+  if (!modelMod) {
+    modelMod = await import('/scripts/prerender-model.js');
+    await modelMod.initCanModel(lb);
+  }
+  return modelMod;
+}
+
+const ALL_OUTPUTS = ['band', 'texture', 'model', 'model-textured'];
+
 /**
- * Renders one artwork to its band + full-can PNGs.
+ * Renders one artwork to the requested outputs.
  * @param {{ filename: string, title: string, author: string, avatarUrl: ?string }} entry
- * @returns {Promise<object>} { bandPngDataUrl, fullPngDataUrl, bandHeight, stretchY, colors, avatarOk } or { error }
+ * @param {string[]} [outputs] - any of 'band' | 'texture' | 'model' | 'model-textured'
+ * @returns {Promise<object>} per-output keys (bandPngDataUrl, fullPngDataUrl,
+ *   modelGlbB64, modelTexturedGlbB64) + { bandHeight, stretchY, colors, avatarOk }, or { error }
  */
-window.__prerenderOne = async (entry) => {
+window.__prerenderOne = async (entry, outputs) => {
   try {
+    const want = new Set(outputs && outputs.length ? outputs : ALL_OUTPUTS);
+    const needModel = want.has('model') || want.has('model-textured');
     const image = await loadImage(ARTWORK_BASE + encodeURIComponent(entry.filename));
 
-    // Arm the settle waiter before kicking off the render cascade.
+    const mod = needModel ? await ensureModel() : null;
+    const artworkArgs = {
+      image, title: entry.title, author: entry.author, avatarUrl: entry.avatarUrl,
+    };
+
+    // Arm the settle waiter before kicking off the render cascade. When models
+    // are active we drive through can.js's setArtworkEntry (via renderModelFor),
+    // which composites the same `lb` band AND deforms the geometry in one call.
     const settled = waitForSettled();
-    const bandHeight = lb.setArtwork({
-      image,
-      title: entry.title,
-      author: entry.author,
-      avatarUrl: entry.avatarUrl,
-    });
+    let bandHeight;
+    if (needModel) {
+      mod.renderModelFor(artworkArgs);
+      bandHeight = lb.bandHeight;
+    } else {
+      bandHeight = lb.setArtwork(artworkArgs);
+    }
     await settled;
 
     const band = lb.builder.canvas;
-    const decal = compositeFullCan(band);
+    const needDecal = want.has('texture') || want.has('model-textured');
+    const decal = needDecal ? compositeFullCan(band) : null;
 
     // loadAvatarDataUrl memoises per URL, so after the render settled this is a
     // cache hit — accurate avatarOk with no extra network round-trip.
     const avatarDataUrl = await loadAvatarDataUrl(entry.avatarUrl);
 
-    return {
-      bandPngDataUrl: band.toDataURL('image/png'),
-      fullPngDataUrl: decal.toDataURL('image/png'),
+    const out = {
       bandHeight,
       stretchY: bandHeight / REF_HEIGHT,
       // setArtwork derives colours internally but doesn't return them; recompute
@@ -127,6 +150,13 @@ window.__prerenderOne = async (entry) => {
       colors: deriveColors(image),
       avatarOk: !!avatarDataUrl,
     };
+    if (want.has('band')) out.bandPngDataUrl = band.toDataURL('image/png');
+    if (want.has('texture')) out.fullPngDataUrl = decal.toDataURL('image/png');
+    if (want.has('model')) out.modelGlbB64 = await mod.exportGlb({ textured: false });
+    if (want.has('model-textured')) {
+      out.modelTexturedGlbB64 = await mod.exportGlb({ textured: true, baseColorCanvas: decal });
+    }
+    return out;
   } catch (err) {
     return { error: String((err && err.message) || err) };
   }

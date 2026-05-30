@@ -8,6 +8,17 @@
        server root so those defaults keep working with zero lib changes. -->
   <base href="/" />
   <title>Prerender (headless)</title>
+
+  <!-- Same importmap as index.html. Only the model outputs import THREE (lazily,
+       from scripts/prerender-model.js); texture-only runs never touch it. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
   <script type="module" src="/scripts/prerender-page.js"></script>
