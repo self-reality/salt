@@ -21,10 +21,11 @@ import { main } from './label.js';
 
 // --- Can placement defaults --------------------------------------------------
 // Pasted from the "Can placement" panel's readout. The can sits on a pivot
-// recentred on its own bounding box, so position is a world translation and
-// scale is uniform about the can's centre. The camera frames the origin, so
-// [0,0,0] / 1 = centred and filling the band.
-const CAN_POSITION = [0, 0, 0]; // x, y, z
+// recentred on its own bounding box, and the offset is applied in VIEW space:
+// X = screen right, Y = screen up, Z = toward the camera (the only axis that
+// changes apparent size). Scale is uniform about the can's centre. The camera
+// frames the origin, so [0,0,0] / 1 = centred and filling the band.
+const CAN_POSITION = [0, 0, 0]; // screen-right, screen-up, toward-camera
 const CAN_SCALE = 1;            // uniform scale
 
 // --- Scene constants (mirror scenes/queue-1.js) ----------------------------
@@ -126,6 +127,12 @@ async function init() {
   let referenceRadius = 1;   // can's unscaled bounding radius — frames the camera
   let fitted = false;
 
+  // View basis captured from the camera (set in fitCamera). The placement
+  // offset is applied along these so X/Y/Z track the screen, not world axes.
+  const viewRight = new THREE.Vector3(1, 0, 0);
+  const viewUp = new THREE.Vector3(0, 1, 0);
+  const viewToCam = new THREE.Vector3(0, 0, 1);
+
   function round3(n) { return Math.round(n * 1000) / 1000; }
 
   function updateCoordsReadout() {
@@ -136,12 +143,23 @@ async function init() {
       `CAN_POSITION = [${round3(x)}, ${round3(y)}, ${round3(z)}];  CAN_SCALE = ${round3(canPlacement.scale)};`;
   }
 
-  // Apply position/scale to the pivot only — the camera and orbit target stay
-  // put, so dialling X/Y/Z visibly slides the can across the band instead of the
-  // view recentring on it.
+  // Place the pivot at controls.target plus a VIEW-space offset, so dialling X
+  // slides the can along the screen horizontal, Y along the screen vertical, and
+  // Z straight along the line of sight (depth) — never diagonally. The camera and
+  // orbit target stay put, so the can visibly moves instead of the view recentring.
+  function positionCanFromView() {
+    if (!canPivot) return;
+    const [x, y, z] = canPlacement.position;
+    canPivot.position
+      .copy(controls.target)
+      .addScaledVector(viewRight, x)
+      .addScaledVector(viewUp, y)
+      .addScaledVector(viewToCam, z);
+  }
+
   function applyPlacement() {
     if (canPivot) {
-      canPivot.position.set(...canPlacement.position);
+      positionCanFromView();
       canPivot.scale.setScalar(canPlacement.scale);
     }
     updateCoordsReadout();
@@ -150,7 +168,8 @@ async function init() {
   // Frame the origin so the can (at scale 1, centred) fills the band rectangle.
   // Targets the origin (not the can's offset centre) so a baked CAN_POSITION
   // offset stays visible, and uses the scale-independent referenceRadius so the
-  // frame is stable while you tweak scale. Re-runs on resize.
+  // frame is stable while you tweak scale. Re-runs on resize. Also caches the
+  // camera's view basis (right/up/toward-camera) that placement offsets ride on.
   const _dir = new THREE.Vector3();
   function fitCamera() {
     const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
@@ -161,6 +180,12 @@ async function init() {
     controls.target.set(0, 0, 0);
     camera.position.copy(_dir);
     controls.update();
+
+    camera.updateMatrixWorld();
+    viewRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    viewUp.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+    viewToCam.setFromMatrixColumn(camera.matrixWorld, 2).normalize();
+    positionCanFromView();
   }
 
   // Keep the renderer buffer + camera aspect matched to the on-screen band
