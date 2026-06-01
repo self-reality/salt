@@ -23,7 +23,7 @@ const DATASET_PATH = 'queue/most-expensive-artworks.json';
 const ARTWORK_BASE_PATH = 'artworks/';
 const ARTWORK_SAMPLE_SIZE = 12;
 
-async function main() {
+export async function main() {
   // ---- Up-front fetches: random artwork pool + the label build assets ------
   let dataset = [];
   try {
@@ -395,6 +395,8 @@ async function main() {
   } else {
     apply(); // no artwork: still paint the band + decal with default colours
   }
-}
 
-main();
+  // Expose the shared builder so pages that embed this wiring (e.g. label-can.js,
+  // which floats a 3D can over the band) can mirror the same label instance.
+  return { lb };
+}

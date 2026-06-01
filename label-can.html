@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Label texture builder</title>
+  <title>Label texture builder · 3D can</title>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -40,6 +40,16 @@
       width: 100%;
       height: auto;
     }
+    /* The transparent WebGL overlay — the 3D can floats over the band. It sits
+       above the band canvas but below the resize handle so the drag still works. */
+    #can-overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: auto;
+    }
     /* The draggable bottom edge — analog of the can's Y dimension. */
     #resize-handle {
       position: absolute;
@@ -52,6 +62,7 @@
       align-items: center;
       justify-content: center;
       touch-action: none;
+      z-index: 2;
     }
     #resize-handle::before {
       content: '';
@@ -67,7 +78,7 @@
       font-variant-numeric: tabular-nums;
     }
 
-    /* ---- Control panel (copied from index.html, made a static column) ---- */
+    /* ---- Control panel (copied from label.html, made a static column) ---- */
     .controls-panel {
       flex: 0 0 300px;
       height: 100%;
@@ -151,11 +162,22 @@
     .hint { font-size: 0.8rem; opacity: 0.7; white-space: normal; }
     #color-status { font-size: 0.8rem; color: #b00020; white-space: normal; }
   </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
   <div id="texture-stage">
     <div id="canvas-wrap">
-      <!-- the builder's <canvas> is inserted here, before the handle -->
+      <!-- the builder's <canvas> is inserted here, before the handle; the 3D
+           can renders into #can-overlay on top of it -->
+      <canvas id="can-overlay"></canvas>
       <div id="resize-handle" title="Drag to resize the label height"></div>
     </div>
     <div id="stage-readout"></div>
@@ -297,6 +319,6 @@
     </div>
   </div>
 
-  <script type="module">import { main } from './label.js'; main();</script>
+  <script type="module" src="label-can.js"></script>
 </body>
 </html>
