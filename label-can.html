@@ -189,6 +189,32 @@
     </div>
 
     <div class="controls-group">
+      <div class="controls-section-title">Can placement</div>
+      <div class="stretch-row">
+        <label for="can-x">X</label>
+        <input type="range" id="can-x" min="-10" max="10" step="0.05" value="0" />
+        <input type="number" id="can-x-input" step="0.05" value="0" />
+      </div>
+      <div class="stretch-row">
+        <label for="can-y">Y</label>
+        <input type="range" id="can-y" min="-10" max="10" step="0.05" value="0" />
+        <input type="number" id="can-y-input" step="0.05" value="0" />
+      </div>
+      <div class="stretch-row">
+        <label for="can-z">Z</label>
+        <input type="range" id="can-z" min="-10" max="10" step="0.05" value="0" />
+        <input type="number" id="can-z-input" step="0.05" value="0" />
+      </div>
+      <div class="stretch-row">
+        <label for="can-scale">Scale</label>
+        <input type="range" id="can-scale" min="0.1" max="5" step="0.01" value="1" />
+        <input type="number" id="can-scale-input" min="0.1" step="0.01" value="1" />
+      </div>
+      <div class="hint" id="can-coords" style="font-variant-numeric: tabular-nums; user-select: all;"></div>
+      <button type="button" id="can-coords-copy">Copy defaults</button>
+    </div>
+
+    <div class="controls-group">
       <div class="controls-section-title">Artwork</div>
       <label>
         Image

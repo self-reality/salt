@@ -5,8 +5,11 @@
 // band-height drag) via its exported main(), and overlays a transparent Three.js
 // can — borrowing scenes/queue-1.js's lighting / env map / camera / orbit setup —
 // that mirrors the same shared label build. Editing any control repaints both the
-// flat band (page background) and the wrapped can (foreground) together. The can
-// is framed to fit the on-screen band rectangle, centred over the label.
+// flat band (page background) and the wrapped can (foreground) together.
+//
+// The "Can placement" panel moves/scales the can over the label; tweak it in the
+// page, then paste the readout's CAN_POSITION / CAN_SCALE values into the
+// constants below to bake them as defaults.
 // -----------------------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -16,9 +19,17 @@ import { loadCan } from './lib/can.js';
 import { REF_HEIGHT } from './lib/label-texture.js';
 import { main } from './label.js';
 
+// --- Can placement defaults --------------------------------------------------
+// Pasted from the "Can placement" panel's readout. The can sits on a pivot
+// recentred on its own bounding box, so position is a world translation and
+// scale is uniform about the can's centre. The camera frames the origin, so
+// [0,0,0] / 1 = centred and filling the band.
+const CAN_POSITION = [0, 0, 0]; // x, y, z
+const CAN_SCALE = 1;            // uniform scale
+
 // --- Scene constants (mirror scenes/queue-1.js) ----------------------------
-// CAMERA_DIR is queue-1's camera offset from the can; we keep the 3/4 viewing
-// angle but recompute the distance so the can fits the (short, wide) band.
+// CAMERA_DIR is queue-1's camera offset direction; we keep the 3/4 viewing angle
+// but recompute the distance so the can fits the (short, wide) band region.
 const CAMERA_DIR = [-10, 4, 11];
 const CAMERA_FOV = 45;
 const FIT_MARGIN = 1.15; // padding around the can when framing it into the band
@@ -81,7 +92,7 @@ async function init() {
   const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 1000);
   camera.position.set(...CAMERA_DIR);
 
-  // --- Controls ---
+  // --- Controls (orbit around the origin = the framed can centre) ---
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -108,13 +119,53 @@ async function init() {
   dirLight3.position.set(...RIM_LIGHT_POSITION);
   scene.add(dirLight3);
 
-  let canGroup = null;
+  // --- Can placement state (driven by the panel, baked via the constants) ---
+  const canPlacement = { position: [...CAN_POSITION], scale: CAN_SCALE };
+  let canPivot = null;       // wrapper recentred on the can; holds position+scale
   let applyStretchY = null;
+  let referenceRadius = 1;   // can's unscaled bounding radius — frames the camera
+  let fitted = false;
+
+  function round3(n) { return Math.round(n * 1000) / 1000; }
+
+  function updateCoordsReadout() {
+    const el = document.getElementById('can-coords');
+    if (!el) return;
+    const [x, y, z] = canPlacement.position;
+    el.textContent =
+      `CAN_POSITION = [${round3(x)}, ${round3(y)}, ${round3(z)}];  CAN_SCALE = ${round3(canPlacement.scale)};`;
+  }
+
+  // Apply position/scale to the pivot only — the camera and orbit target stay
+  // put, so dialling X/Y/Z visibly slides the can across the band instead of the
+  // view recentring on it.
+  function applyPlacement() {
+    if (canPivot) {
+      canPivot.position.set(...canPlacement.position);
+      canPivot.scale.setScalar(canPlacement.scale);
+    }
+    updateCoordsReadout();
+  }
+
+  // Frame the origin so the can (at scale 1, centred) fills the band rectangle.
+  // Targets the origin (not the can's offset centre) so a baked CAN_POSITION
+  // offset stays visible, and uses the scale-independent referenceRadius so the
+  // frame is stable while you tweak scale. Re-runs on resize.
+  const _dir = new THREE.Vector3();
+  function fitCamera() {
+    const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
+    const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+    const limit = Math.min(vHalf, hHalf);
+    const dist = (referenceRadius * FIT_MARGIN) / Math.sin(limit);
+    _dir.set(...CAMERA_DIR).normalize().multiplyScalar(dist);
+    controls.target.set(0, 0, 0);
+    camera.position.copy(_dir);
+    controls.update();
+  }
 
   // Keep the renderer buffer + camera aspect matched to the on-screen band
-  // rectangle, so the can is "limited by the label" and centred over it. CSS
-  // (inset:0; width/height:100%) owns the display size — pass updateStyle=false.
-  // Returns true when the size actually changed.
+  // rectangle. CSS (inset:0; width/height:100%) owns the display size — pass
+  // updateStyle=false. Returns true when the size actually changed.
   let lastW = 0, lastH = 0;
   function resizeOverlay() {
     const w = Math.max(1, Math.round(wrap.clientWidth));
@@ -128,31 +179,61 @@ async function init() {
     return true;
   }
 
-  // Frame the can so it fills the band rectangle, centred — keeping the current
-  // view direction (queue-1's 3/4 angle, or whatever the user orbited to). The
-  // viewport is wide and short, so the vertical FOV is usually the limit; we fit
-  // the can's bounding sphere to whichever half-angle (vertical/horizontal) is
-  // smaller, then point OrbitControls at the can's centre.
-  const _box = new THREE.Box3();
-  const _sphere = new THREE.Sphere();
-  const _dir = new THREE.Vector3();
-  function fitCameraToCan() {
-    if (!canGroup) return;
-    _box.setFromObject(canGroup);
-    if (_box.isEmpty()) return;
-    _box.getBoundingSphere(_sphere);
-    const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
-    const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
-    const limit = Math.min(vHalf, hHalf);
-    const dist = (_sphere.radius * FIT_MARGIN) / Math.sin(limit);
+  // --- Placement panel wiring ---
+  function syncPair(sliderId, numberId, value) {
+    const slider = document.getElementById(sliderId);
+    const number = document.getElementById(numberId);
+    if (slider) slider.value = String(value);
+    if (number) number.value = String(value);
+  }
+  function wireAxis(axisIndex, sliderId, numberId) {
+    const slider = document.getElementById(sliderId);
+    const number = document.getElementById(numberId);
+    const set = (raw) => {
+      const v = parseFloat(raw);
+      if (!Number.isFinite(v)) return;
+      canPlacement.position[axisIndex] = v;
+      syncPair(sliderId, numberId, v);
+      applyPlacement();
+    };
+    if (slider) slider.addEventListener('input', () => set(slider.value));
+    if (number) number.addEventListener('input', () => set(number.value));
+  }
+  function wireScale() {
+    const slider = document.getElementById('can-scale');
+    const number = document.getElementById('can-scale-input');
+    const set = (raw) => {
+      const v = parseFloat(raw);
+      if (!Number.isFinite(v) || v <= 0) return;
+      canPlacement.scale = v;
+      syncPair('can-scale', 'can-scale-input', v);
+      applyPlacement();
+    };
+    if (slider) slider.addEventListener('input', () => set(slider.value));
+    if (number) number.addEventListener('input', () => set(number.value));
+  }
+  // Seed the inputs from the baked defaults so the panel reflects them.
+  syncPair('can-x', 'can-x-input', canPlacement.position[0]);
+  syncPair('can-y', 'can-y-input', canPlacement.position[1]);
+  syncPair('can-z', 'can-z-input', canPlacement.position[2]);
+  syncPair('can-scale', 'can-scale-input', canPlacement.scale);
+  wireAxis(0, 'can-x', 'can-x-input');
+  wireAxis(1, 'can-y', 'can-y-input');
+  wireAxis(2, 'can-z', 'can-z-input');
+  wireScale();
+  updateCoordsReadout();
 
-    _dir.copy(camera.position).sub(controls.target);
-    if (_dir.lengthSq() === 0) _dir.set(...CAMERA_DIR);
-    _dir.normalize().multiplyScalar(dist);
-
-    controls.target.copy(_sphere.center);
-    camera.position.copy(_sphere.center).add(_dir);
-    controls.update();
+  const copyBtn = document.getElementById('can-coords-copy');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      const el = document.getElementById('can-coords');
+      if (!el || !navigator.clipboard) return;
+      navigator.clipboard.writeText(el.textContent).then(() => {
+        const prev = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = prev; }, 1200);
+      }).catch(() => {});
+    });
   }
 
   // --- Can: shares the page's label build, mirrors it on every repaint ---
@@ -162,20 +243,32 @@ async function init() {
     labelBuild: lb,
     onLoaded({ canGroup: group, material, activateLabel }) {
       material.envMapIntensity = ENV_MAP_INTENSITY;
-      scene.add(group);
-      canGroup = group;
 
       // Turn on full-label mode without driving the builder; label.js owns lb,
       // and the can re-blits the band on every builder repaint (setOnDraw).
       activateLabel();
 
+      // Recentre the can on a pivot so placement position/scale act about its
+      // centre (the baked geometry sits off-origin otherwise).
+      const box = new THREE.Box3().setFromObject(group);
+      const center = box.getCenter(new THREE.Vector3());
+      referenceRadius = box.getBoundingSphere(new THREE.Sphere()).radius;
+      group.position.sub(center);
+
+      const pivot = new THREE.Group();
+      pivot.add(group);
+      scene.add(pivot);
+      canPivot = pivot;
+      applyPlacement(); // apply CAN_POSITION / CAN_SCALE defaults
+
       const loadingEl = document.getElementById('loading');
       if (loadingEl) loadingEl.classList.add('hidden');
 
       // Band height → can Y-stretch (same mapping as can.js setArtworkEntry),
-      // operating on the restPositions loadCan baked in. Mirrors queue-1.
-      const box0 = new THREE.Box3().setFromObject(group);
-      const originalHeight = box0.getSize(new THREE.Vector3()).y;
+      // operating on the restPositions loadCan baked in. Mirrors queue-1. The
+      // stretch is symmetric about the can's centre, so it stays centred on the
+      // pivot.
+      const originalHeight = box.getSize(new THREE.Vector3()).y;
 
       applyStretchY = function (stretchFactor) {
         if (!Number.isFinite(stretchFactor) || stretchFactor <= 0) return;
@@ -215,17 +308,21 @@ async function init() {
   let lastBand = -1;
   function animate() {
     requestAnimationFrame(animate);
-    let needFit = resizeOverlay();
+    const resized = resizeOverlay();
 
     // Mirror band-height changes (artwork fit, drag handle, Height input) onto
-    // the can's Y-stretch, then reframe.
-    if (canGroup && applyStretchY && lb.bandHeight !== lastBand) {
+    // the can's Y-stretch.
+    if (canPivot && applyStretchY && lb.bandHeight !== lastBand) {
       lastBand = lb.bandHeight;
       applyStretchY(lb.bandHeight / REF_HEIGHT);
-      needFit = true;
     }
 
-    if (needFit) fitCameraToCan();
+    // Frame once the band rectangle has a real size, and re-frame on resize.
+    if (canPivot && lastW > 0 && lastH > 0 && (!fitted || resized)) {
+      fitCamera();
+      fitted = true;
+    }
+
     controls.update();
     renderer.render(scene, camera);
   }
