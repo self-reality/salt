@@ -50,6 +50,9 @@ export async function main() {
   const medallionRadiusInput = document.getElementById('medallion-radius');
   const medallionRadiusValue = document.getElementById('medallion-radius-value');
   const medallionGuidesInput = document.getElementById('medallion-guides');
+  // Looked up here (not just in the colours section) so applyArtworkMetadata can
+  // overwrite the description when an artwork is selected.
+  const smithsInput = document.getElementById('smiths-text');
 
   // Push the panel's current medallion fields into the build (title, author,
   // radius, guides). setMedallion merges, so calling on any single edit is fine.
@@ -71,6 +74,32 @@ export async function main() {
   pushStamp();
   if (titleInput) lb.setSideTitle(titleInput.value);
   pushMedallion();
+
+  // Substitute every metadata-driven field from a selected artwork (mirrors what
+  // scenes/prerender pass to lb.setArtwork). Overwrites the panel inputs so they
+  // show the artwork's values and stay editable, then pushes through the same
+  // setters live edits use. Barcode + net-wt have no dataset source, so they're
+  // left untouched. The image/band/colours/avatar are handled by loadArtwork +
+  // the <select> avatar wiring.
+  const applyArtworkMetadata = (item) => {
+    if (!item) return;
+    if (titleInput) {
+      // Same format as lib/label-build.js setArtwork(): curly quotes, double space.
+      titleInput.value = `“${item.name}”  by ${item.username}`;
+      lb.setSideTitle(titleInput.value);
+    }
+    if (medallionOuterInput) medallionOuterInput.value = item.name;
+    if (medallionInnerInput) medallionInnerInput.value = item.username;
+    pushMedallion();
+    if (item.contractAddress && datamatrixInput) {
+      datamatrixInput.value = `${item.contractAddress} (Token ID ${item.tokenId ?? ''})`;
+      lb.setDatamatrix(datamatrixInput.value);
+    }
+    if (item.description && smithsInput) {
+      smithsInput.value = item.description;
+      lb.setSmithsText(item.description);
+    }
+  };
 
   // ---- Variables panel live edits ------------------------------------------
   if (barcodeInput) {
@@ -113,7 +142,6 @@ export async function main() {
 
   // Smiths description — the long passage that wraps the can vertically. Seed
   // the textarea with the default the build already starts with; pipe edits in.
-  const smithsInput = document.getElementById('smiths-text');
   if (smithsInput) {
     smithsInput.value = DEFAULT_SMITHS_TEXT;
     smithsInput.addEventListener('input', () => lb.setSmithsText(smithsInput.value));
@@ -321,9 +349,14 @@ export async function main() {
   const prevBtn = document.getElementById('artwork-prev');
   const nextBtn = document.getElementById('artwork-next');
 
+  // Kept around (not discarded) so the selection handlers can read the full
+  // metadata for the chosen option — option index i+1 ↔ currentSamples[i].
+  let currentSamples = [];
+
   function populateArtworks() {
     if (!artworkSelect) return [];
     const samples = buildRandomManifestFromDataset(dataset, ARTWORK_SAMPLE_SIZE);
+    currentSamples = samples;
     artworkSelect.innerHTML = '';
     const placeholder = document.createElement('option');
     placeholder.value = '';
@@ -347,11 +380,18 @@ export async function main() {
     return (opt && opt.dataset.avatar) || null;
   }
 
+  // The sample behind the current selection (index 0 is the placeholder).
+  function sampleForSelectedIndex() {
+    if (!artworkSelect) return null;
+    return currentSamples[artworkSelect.selectedIndex - 1] || null;
+  }
+
   if (artworkSelect) {
     artworkSelect.addEventListener('change', () => {
       if (artworkSelect.value) {
         loadArtworkFromUrl(artworkSelect.value);
         lb.setAvatar(avatarForSelectedOption());
+        applyArtworkMetadata(sampleForSelectedIndex());
       }
     });
   }
@@ -372,6 +412,7 @@ export async function main() {
     if (artworkSelect.value) {
       loadArtworkFromUrl(artworkSelect.value);
       lb.setAvatar(avatarForSelectedOption());
+      applyArtworkMetadata(sampleForSelectedIndex());
     }
   }
 
@@ -392,6 +433,7 @@ export async function main() {
     artworkSelect.selectedIndex = 1; // index 0 is the placeholder
     loadArtworkFromUrl(artworkSelect.value);
     lb.setAvatar(avatarForSelectedOption());
+    applyArtworkMetadata(sampleForSelectedIndex());
   } else {
     apply(); // no artwork: still paint the band + decal with default colours
   }
