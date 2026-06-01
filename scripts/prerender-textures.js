@@ -2,10 +2,10 @@
 // prerender-textures.js — standalone batch prerenderer for SPAM can textures.
 //
 // For each artwork in queue/most-expensive-artworks.json this:
-//   1. serves the repo over a local static HTTP server (so artworks + BaseColor
+//   1. serves the repo over a local static HTTP server (so artworks + base texture
 //      are same-origin and the canvas never taints),
 //   2. drives a headless Chromium page (scripts/prerender.html) that reuses the
-//      live label pipeline to composite the label band and the full can BaseColor,
+//      live label pipeline to composite the label band and the full can base texture,
 //   3. writes both PNGs to prerender-out/ plus an incremental manifest.json.
 //
 // Run:  npm run prerender            (or: node scripts/prerender-textures.js)
@@ -23,7 +23,7 @@ import puppeteer from 'puppeteer';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 const DATASET_PATH = path.join(REPO_ROOT, 'queue', 'most-expensive-artworks.json');
-const BASE_TEXTURE_REL = 'bennyrizzo - 1950s-spam/textures/BaseColor.png';
+const BASE_TEXTURE_REL = 'bennyrizzo - 1950s-spam/textures/salt-bitmap.png';
 
 // Per-output spec: which page result key carries the base64 blob, where it's
 // written (subdir + extension) and the manifest field that records its path.
@@ -185,7 +185,7 @@ async function main() {
   console.log(`rendering ${items.length} artwork(s) → ${opts.out} (concurrency ${opts.concurrency})`);
   console.log(`outputs: ${opts.outputs.join(', ')}`);
   if (opts.outputs.includes('model-textured')) {
-    console.log('note: model-textured GLBs are ~5-6 MB each (BaseColor dominates).');
+    console.log('note: model-textured GLBs are ~5-6 MB each (base texture dominates).');
   }
   console.log('');
 

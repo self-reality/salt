@@ -5,7 +5,7 @@
 // reuses the *exact* live label pipeline (lib/label-build.js → lib/label-texture.js)
 // so prerendered output matches what the 3D scenes / label.html render on the
 // fly, then replays lib/can.js's full-can composite to bake the band into the
-// can's BaseColor texture. THREE is never imported here — only lib/can.js pulls
+// can's base texture. THREE is never imported here — only lib/can.js pulls
 // it in, and we re-implement its ~10-line composite below instead.
 //
 // Exposes window.__prerenderOne(entry) for the Node driver to call per artwork.
@@ -17,13 +17,13 @@ import { deriveColors } from '/lib/color-extraction.js';
 import { loadAvatarDataUrl } from '/lib/circle-avatar.js';
 
 // Full-can composite constants, copied from lib/can.js (kept in sync by hand;
-// they're authored against a 1024px reference texture). BaseColor is 4096²; the
+// they're authored against a 1024px reference texture). The base is 4096²; the
 // band is squashed into the fixed label region while its varying height drives
 // the can's Y-stretch separately (see stretchY in the manifest).
 const TEXTURE_REF_SIZE = 1024;
 const LABEL_BAND_Y = 501;
 const LABEL_BAND_HEIGHT = 259;
-const BASE_COLOR_URL = '/bennyrizzo - 1950s-spam/textures/BaseColor.png';
+const BASE_COLOR_URL = '/bennyrizzo - 1950s-spam/textures/salt-bitmap.png';
 const ARTWORK_BASE = '/artworks/';
 
 // Quiescence tuning: a setArtwork() kicks off a burst of async draws (SVG layer
@@ -35,7 +35,7 @@ const QUIET_MS = 250;
 const HARD_MAX_MS = 8000;
 
 let lb = null;        // the single reusable label build (mirrors scene usage)
-let baseImg = null;   // BaseColor.png, decoded once and reused
+let baseImg = null;   // salt-bitmap.png, decoded once and reused
 
 /** Loads an <img> from a (same-origin) URL, resolving once decoded. */
 function loadImage(url) {
@@ -75,7 +75,7 @@ function waitForSettled() {
   });
 }
 
-/** Bakes the current label band into a full-size BaseColor decal canvas. */
+/** Bakes the current label band into a full-size base-texture decal canvas. */
 function compositeFullCan(band) {
   const decal = document.createElement('canvas');
   decal.width = baseImg.naturalWidth;
@@ -162,7 +162,7 @@ window.__prerenderOne = async (entry, outputs) => {
   }
 };
 
-// ---- One-time init: load assets + fonts + BaseColor, build the reusable lb ---
+// ---- One-time init: load assets + fonts + base texture, build the reusable lb ---
 (async () => {
   try {
     const assets = await loadLabelAssets();

@@ -226,19 +226,19 @@ export async function runTestScene() {
 
         originalToggle.addEventListener('change', () => {
           if (originalToggle.checked) {
-            savedTexture = textureSelect ? textureSelect.value : 'BaseColor.png';
+            savedTexture = textureSelect ? textureSelect.value : 'salt-bitmap.png';
             savedStretch = getStretchValues();
 
             clearArtwork();
-            setBaseTexture('BaseColor.png');
-            if (textureSelect) textureSelect.value = 'BaseColor.png';
+            setBaseTexture('salt-bitmap.png');
+            if (textureSelect) textureSelect.value = 'salt-bitmap.png';
             resetStretch();
 
             setEditingDisabled(true);
           } else {
             setEditingDisabled(false);
 
-            const texture = savedTexture || 'BaseColor.png';
+            const texture = savedTexture || 'salt-bitmap.png';
             applySelection(texture);
             if (textureSelect) textureSelect.value = texture;
             if (savedStretch) setStretchValues(savedStretch.x, savedStretch.y, savedStretch.z);
