@@ -28,6 +28,16 @@ import { main } from './label.js';
 const CAN_POSITION = [0, 0, 0]; // screen-right, screen-up, toward-camera
 const CAN_SCALE = 1;            // uniform scale
 
+// X / Scale are calibrated against band height (= artwork aspect; the band is
+// always 4096 wide, so its height tracks the artwork's shape). Two measured
+// points define a line through which X and Scale are interp/extrapolated; Scale
+// is floored so very tall bands can't invert or vanish the can.
+const CAN_CALIB = {
+  lo: { h: 431,  x: -7.1, scale: 2.83 },
+  hi: { h: 1631, x: -4.0, scale: 1.48 },
+};
+const MIN_CAN_SCALE = 0.1; // matches the #can-scale slider minimum
+
 // --- Scene constants (mirror scenes/queue-1.js) ----------------------------
 // CAMERA_DIR is queue-1's camera offset direction; we keep the 3/4 viewing angle
 // but recompute the distance so the can fits the (short, wide) band region.
@@ -163,6 +173,24 @@ async function init() {
       canPivot.scale.setScalar(canPlacement.scale);
     }
     updateCoordsReadout();
+  }
+
+  // Derive X and Scale from the band height along the calibrated line (see
+  // CAN_CALIB), reflect them into the panel inputs, and push to the scene. Runs
+  // whenever the band height changes; Y/Z are left as-is.
+  function lerpByHeight(h, key) {
+    const { lo, hi } = CAN_CALIB;
+    const t = (h - lo.h) / (hi.h - lo.h);
+    return lo[key] + t * (hi[key] - lo[key]);
+  }
+  function recomputeCanPlacement(h) {
+    const x = lerpByHeight(h, 'x');
+    const scale = Math.max(MIN_CAN_SCALE, lerpByHeight(h, 'scale'));
+    canPlacement.position[0] = x;
+    canPlacement.scale = scale;
+    syncPair('can-x', 'can-x-input', round3(x));
+    syncPair('can-scale', 'can-scale-input', round3(scale));
+    applyPlacement();
   }
 
   // Frame the origin so the can (at scale 1, centred) fills the band rectangle.
@@ -340,6 +368,7 @@ async function init() {
     if (canPivot && applyStretchY && lb.bandHeight !== lastBand) {
       lastBand = lb.bandHeight;
       applyStretchY(lb.bandHeight / REF_HEIGHT);
+      recomputeCanPlacement(lb.bandHeight); // X + Scale tracked to band height
     }
 
     // Frame once the band rectangle has a real size, and re-frame on resize.
