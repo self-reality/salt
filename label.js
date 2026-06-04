@@ -78,8 +78,8 @@ export async function main() {
   // Substitute every metadata-driven field from a selected artwork (mirrors what
   // scenes/prerender pass to lb.setArtwork). Overwrites the panel inputs so they
   // show the artwork's values and stay editable, then pushes through the same
-  // setters live edits use. Barcode + net-wt have no dataset source, so they're
-  // left untouched. The image/band/colours/avatar are handled by loadArtwork +
+  // setters live edits use. Net-wt has no dataset source, so it's left
+  // untouched. The image/band/colours/avatar are handled by loadArtwork +
   // the <select> avatar wiring.
   const applyArtworkMetadata = (item) => {
     if (!item) return;
@@ -98,6 +98,13 @@ export async function main() {
     if (item.description && smithsInput) {
       smithsInput.value = item.description;
       lb.setSmithsText(item.description);
+    }
+    if (item.createdAtIso && barcodeInput) {
+      // createdAtIso is "2023-01-20T05:39:23.000Z"; keep the UTC date portion
+      // only so the barcode reads as a human-readable "2023-01-20".
+      const date = item.createdAtIso.slice(0, 10);
+      barcodeInput.value = date;
+      lb.setBarcode(date);
     }
   };
 
