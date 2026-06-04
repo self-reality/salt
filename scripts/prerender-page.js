@@ -119,7 +119,7 @@ window.__prerenderOne = async (entry, outputs) => {
     const mod = needModel ? await ensureModel() : null;
     const artworkArgs = {
       image, title: entry.title, author: entry.author, avatarUrl: entry.avatarUrl,
-      sizeKb: entry.sizeKb,
+      sizeKb: entry.sizeKb, width: entry.width, height: entry.height,
     };
 
     // Arm the settle waiter before kicking off the render cascade. When models

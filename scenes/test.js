@@ -122,6 +122,8 @@ export async function runTestScene() {
           author: item ? item.username : '',
           avatarUrl: item ? item.avatar : null,
           sizeKb: item ? item.sizeKb : null,
+          width: item ? item.width : null,
+          height: item ? item.height : null,
         }, setStretchYFromFactor);
         img.onerror = () => console.error('Failed to load artwork:', url);
         img.src = url;

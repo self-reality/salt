@@ -106,6 +106,7 @@ export async function main() {
       barcodeInput.value = date;
       lb.setBarcode(date);
     }
+    lb.setDimensions(item.width, item.height);
     const netWt = formatNetWeight(item.sizeKb);
     if (netWt && stampValueInput && stampUnitInput) {
       stampValueInput.value = netWt.value;

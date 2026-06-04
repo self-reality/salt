@@ -233,7 +233,7 @@ async function main() {
         const t0 = Date.now();
         const r = await page.evaluate(
           (e, outs) => window.__prerenderOne(e, outs),
-          { filename: item.filename, title: item.name, author: item.username, avatarUrl: item.avatar, sizeKb: item.sizeKb },
+          { filename: item.filename, title: item.name, author: item.username, avatarUrl: item.avatar, sizeKb: item.sizeKb, width: item.width, height: item.height },
           opts.outputs,
         );
 

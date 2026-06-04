@@ -254,6 +254,8 @@ export async function runQueue1Scene() {
           author: item._item.username,
           avatarUrl: item._item.avatar,
           sizeKb: item._item.sizeKb,
+          width: item._item.width,
+          height: item._item.height,
         }, applyStretchY);
         updateOverlay(item._item);
       }
