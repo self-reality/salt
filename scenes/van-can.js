@@ -493,6 +493,7 @@ export async function runVanCanScene() {
           title: item._item.name,
           author: item._item.username,
           avatarUrl: item._item.avatar,
+          sizeKb: item._item.sizeKb,
         }, applyStretchY);
         updateOverlay(item._item);
       }

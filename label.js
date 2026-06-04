@@ -8,7 +8,7 @@
 // -----------------------------------------------------------------------------
 
 import { deriveColors } from './lib/color-extraction.js';
-import { buildRandomManifestFromDataset } from './lib/dataset.js';
+import { buildRandomManifestFromDataset, formatNetWeight } from './lib/dataset.js';
 import { loadLabelAssets, createLabelBuild } from './lib/label-build.js';
 import {
   TEX_WIDTH,
@@ -78,9 +78,9 @@ export async function main() {
   // Substitute every metadata-driven field from a selected artwork (mirrors what
   // scenes/prerender pass to lb.setArtwork). Overwrites the panel inputs so they
   // show the artwork's values and stay editable, then pushes through the same
-  // setters live edits use. Net-wt has no dataset source, so it's left
-  // untouched. The image/band/colours/avatar are handled by loadArtwork +
-  // the <select> avatar wiring.
+  // setters live edits use. Net-wt is driven from the artwork's file weight
+  // (metadata.sizeKb). The image/band/colours/avatar are handled by loadArtwork
+  // + the <select> avatar wiring.
   const applyArtworkMetadata = (item) => {
     if (!item) return;
     if (titleInput) {
@@ -105,6 +105,12 @@ export async function main() {
       const date = item.createdAtIso.slice(0, 10);
       barcodeInput.value = date;
       lb.setBarcode(date);
+    }
+    const netWt = formatNetWeight(item.sizeKb);
+    if (netWt && stampValueInput && stampUnitInput) {
+      stampValueInput.value = netWt.value;
+      stampUnitInput.value = netWt.unit;
+      pushStamp();
     }
   };
 
