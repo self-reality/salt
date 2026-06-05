@@ -144,6 +144,7 @@ for (let i = 0; i < slice.length; i++) {
   const { valid, raw } = slice[i];
   const { creator, metadata: meta } = raw;
   const base = baseFromFilename(valid.filename);
+  const title = (meta.name || '').trim();
 
   // Resume: skip artworks that already have a comment unless --force.
   if (!opts.force && metadata[base]?.comment) {
@@ -158,7 +159,7 @@ for (let i = 0; i < slice.length; i++) {
       bio: creator.bio,
     },
     metadata: {
-      name: meta.name,
+      name: title,
       description: meta.description,
       tags: meta.tags,
     },
@@ -195,7 +196,7 @@ for (let i = 0; i < slice.length; i++) {
   const randomCommentTemplateFile = randomFrom(commentTemplateFiles);
   const commentTemplate = readFileSync(path.join(TEMPLATES_DIR, randomCommentTemplateFile), 'utf8');
   const comment = commentTemplate
-    .replaceAll('{{title}}', meta.name)
+    .replaceAll('{{title}}', title)
     .replace('{{llm_response}}', llmResponse)
     .replace('{{year1}}', year1)
     .replace('{{year2}}', year2)
@@ -210,7 +211,7 @@ for (let i = 0; i < slice.length; i++) {
     comment,
   };
 
-  console.log(`         Artwork: ${meta.name}`);
+  console.log(`         Artwork: ${title}`);
   console.log(comment);
   console.log('');
 
