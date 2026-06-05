@@ -52,9 +52,8 @@ const METADATA_PATH = path.join(OUT_DIR, 'metadata.json');
 const PROMPT_FILE = path.join(__dirname, 'templates', 'prompt.md');
 const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
-// const DEFAULT_MODEL = 'moonshotai/kimi-k2.5';
-const DEFAULT_MODEL = 'deepseek/deepseek-v3.2';
-const SECOND_MODEL = 'deepseek/deepseek-chat-v3-0324'; // alt model for split runs
+// Prior defaults (kept for reference): 'moonshotai/kimi-k2.5', 'deepseek/deepseek-v3.2'.
+const DEFAULT_MODEL = 'deepseek/deepseek-chat-v3-0324';
 const API_KEY = process.env.OPENROUTER_API_KEY;
 const SAVE_EVERY = 10; // flush metadata.json every N generated entries
 
@@ -63,7 +62,8 @@ const SAVE_EVERY = 10; // flush metadata.json every N generated entries
 // cost; these rates may drift, so estimated figures are flagged in the summary.
 const PRICING = {
   'deepseek/deepseek-v3.2': { input: 0.27, output: 0.40 },
-  'deepseek/deepseek-chat-v3-0324': { input: 0.27, output: 0.88 },
+  'deepseek/deepseek-chat-v3-0324': { input: 0.20, output: 0.77 },
+  'qwen/qwen3-235b-a22b': { input: 0.455, output: 1.82 },
 };
 
 // ---- CLI -------------------------------------------------------------------
