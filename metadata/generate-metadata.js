@@ -49,6 +49,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const DATASET_PATH = path.join(REPO_ROOT, 'queue', 'most-expensive-artworks.json');
 const OUT_DIR = path.join(REPO_ROOT, 'prerender-out');
 const METADATA_PATH = path.join(OUT_DIR, 'metadata.json');
+const COMPARE_PATH = path.join(OUT_DIR, 'comment-comparison.json');
 const PROMPT_FILE = path.join(__dirname, 'templates', 'prompt.md');
 const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
@@ -75,6 +76,7 @@ function parseArgs(argv) {
     models: [DEFAULT_MODEL],
     maxComments: Infinity,
     metricsOnly: false,
+    compare: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
@@ -86,6 +88,7 @@ function parseArgs(argv) {
     else if (a === '--models') opts.models = next().split(',').map((m) => m.trim()).filter(Boolean);
     else if (a === '--max-comments') opts.maxComments = parseInt(next(), 10);
     else if (a === '--metrics-only') opts.metricsOnly = true;
+    else if (a === '--compare') opts.compare = true;
     else throw new Error(`unknown flag: ${a}`);
   }
   if (opts.models.length === 0) opts.models = [DEFAULT_MODEL];
@@ -404,6 +407,105 @@ if (commentTemplateFiles.length === 0) {
   process.exit(1);
 }
 
+// Build the LLM input payload for one artwork (the fields prompt.md reasons over).
+function buildPayload(creator, title, meta) {
+  return {
+    creator: { username: creator.username, fullName: creator.fullName, bio: creator.bio },
+    metadata: { name: title, description: meta.description, tags: meta.tags },
+  };
+}
+
+// Request one comment from `model`, wrap it in a random comment-*.md template, and
+// fold the response's usage into the per-model cost totals. Returns
+// { comment, llmResponse, usage } or null on API error.
+async function generateComment(model, payload, title) {
+  const prompt = promptTemplate + JSON.stringify(payload, null, 2);
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      usage: { include: true }, // ask OpenRouter to return actual cost + tokens
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error(`OpenRouter API error ${response.status} (${model}): ${text}`);
+    return null;
+  }
+
+  const data = await response.json();
+  const llmResponse = data.choices[0].message.content.trim();
+  const usage = recordUsage(model, data.usage);
+
+  const year1 = randomInt(2027, 2030);
+  const year2 = randomInt(year1 + 1, 2036);
+  const tplFile = randomFrom(commentTemplateFiles);
+  const tpl = readFileSync(path.join(TEMPLATES_DIR, tplFile), 'utf8');
+  const comment = tpl
+    .replaceAll('{{title}}', title)
+    .replace('{{llm_response}}', llmResponse)
+    .replace('{{year1}}', year1)
+    .replace('{{year2}}', year2)
+    .replace('{{hash}}', generateHash());
+
+  return { comment, llmResponse, usage };
+}
+
+// ---- compare mode: same artworks, every model, side-by-side ----------------
+// Runs each --models entry over the SAME slice of artworks so outputs can be read
+// against identical inputs. Writes a separate prerender-out/comment-comparison.json
+// (never metadata.json) so it can't clobber production comments. Select the artwork
+// set with --start/--limit (e.g. --limit 10 → first 10 artworks).
+if (opts.compare) {
+  let compareOut = {};
+  if (existsSync(COMPARE_PATH)) {
+    try { compareOut = JSON.parse(readFileSync(COMPARE_PATH, 'utf8')); } catch { compareOut = {}; }
+  }
+
+  console.log(`\nComparing ${opts.models.length} models on ${slice.length} artworks (side-by-side):`);
+  console.log(`  ${opts.models.join('\n  ')}\n`);
+
+  for (let i = 0; i < slice.length; i++) {
+    const { valid, raw } = slice[i];
+    const { creator, metadata: meta } = raw;
+    const base = baseFromFilename(valid.filename);
+    const title = (meta.name || '').trim();
+    const payload = buildPayload(creator, title, meta);
+
+    console.log(`\n========== [${i + 1}/${slice.length}] ${creator.username} — ${title} (${base}) ==========`);
+
+    const perModel = {};
+    for (const model of opts.models) {
+      const res = await generateComment(model, payload, title);
+      if (!res) continue;
+      perModel[model] = {
+        comment: res.comment,
+        llmResponse: res.llmResponse,
+        totalTok: res.usage.totalTok,
+        cost: res.usage.cost,
+        estimated: res.usage.estimated,
+      };
+      console.log(`\n--- ${model} · ${res.usage.totalTok} tok · ${fmtUsd(res.usage.cost)}${res.usage.estimated ? ' (est)' : ''} ---`);
+      console.log(res.comment);
+    }
+
+    compareOut[base] = { localFilename: valid.filename, artist: creator.username, title, models: perModel };
+    if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
+    writeFileSync(COMPARE_PATH, JSON.stringify(compareOut, null, 2));
+  }
+
+  printCostSummary();
+  console.log(`\nSaved side-by-side comparison for ${slice.length} artworks → ${path.relative(REPO_ROOT, COMPARE_PATH)}.`);
+  process.exit(0);
+}
+
+// ---- default mode: one comment per artwork, rotating models, into metadata ---
 const cap = Number.isFinite(opts.maxComments) ? ` up to ${opts.maxComments}` : '';
 console.log(`\nGenerating${cap} comments (models: ${opts.models.join(', ')})...\n`);
 
@@ -425,58 +527,13 @@ for (let i = 0; i < slice.length; i++) {
   // Rotate models across generations so a multi-model run splits the workload
   // evenly (e.g. 2 models over 20 comments → 10 each).
   const model = opts.models[generated % opts.models.length];
-
-  const payload = {
-    creator: {
-      username: creator.username,
-      fullName: creator.fullName,
-      bio: creator.bio,
-    },
-    metadata: {
-      name: title,
-      description: meta.description,
-      tags: meta.tags,
-    },
-  };
-
-  const prompt = promptTemplate + JSON.stringify(payload, null, 2);
+  const payload = buildPayload(creator, title, meta);
 
   console.log(`[${i + 1}/${slice.length}] Requesting comment for "${creator.username}" (${base}) via ${model}...`);
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      usage: { include: true }, // ask OpenRouter to return actual cost + tokens
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    console.error(`OpenRouter API error ${response.status}: ${text}`);
-    continue;
-  }
-
-  const data = await response.json();
-  const llmResponse = data.choices[0].message.content.trim();
-  const usage = recordUsage(model, data.usage);
-
-  const year1 = randomInt(2027, 2030);
-  const year2 = randomInt(year1 + 1, 2036);
-
-  const randomCommentTemplateFile = randomFrom(commentTemplateFiles);
-  const commentTemplate = readFileSync(path.join(TEMPLATES_DIR, randomCommentTemplateFile), 'utf8');
-  const comment = commentTemplate
-    .replaceAll('{{title}}', title)
-    .replace('{{llm_response}}', llmResponse)
-    .replace('{{year1}}', year1)
-    .replace('{{year2}}', year2)
-    .replace('{{hash}}', generateHash());
+  const res = await generateComment(model, payload, title);
+  if (!res) continue;
+  const { comment, usage } = res;
 
   // Merge into the existing per-artwork object so future fields survive.
   metadata[base] = {
