@@ -33,6 +33,10 @@ pids
 # Optional eslint cache
 .eslintcache
 
+# Environment / secrets
+.env
+.env.*
+
 # Dependencies
 node_modules/
 

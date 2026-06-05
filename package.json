@@ -4,7 +4,11 @@
   "type": "module",
   "description": "Offline batch prerenderer for SPAM can label/can textures (drives lib/label-build via headless Chromium).",
   "scripts": {
-    "prerender": "node scripts/prerender-textures.js"
+    "prerender": "node scripts/prerender-textures.js",
+    "metadata": "node metadata/generate-metadata.js"
+  },
+  "dependencies": {
+    "dotenv": "^16"
   },
   "devDependencies": {
     "puppeteer": "^23"
