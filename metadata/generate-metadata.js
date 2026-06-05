@@ -53,8 +53,9 @@ const COMPARE_PATH = path.join(OUT_DIR, 'comment-comparison.json');
 const PROMPT_FILE = path.join(__dirname, 'templates', 'prompt.md');
 const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
-// Prior defaults (kept for reference): 'moonshotai/kimi-k2.5', 'deepseek/deepseek-v3.2'.
-const DEFAULT_MODEL = 'deepseek/deepseek-chat-v3-0324';
+// Prior defaults (kept for reference): 'moonshotai/kimi-k2.5',
+// 'deepseek/deepseek-v3.2', 'deepseek/deepseek-chat-v3-0324'.
+const DEFAULT_MODEL = 'qwen/qwen3-235b-a22b';
 const API_KEY = process.env.OPENROUTER_API_KEY;
 const SAVE_EVERY = 10; // flush metadata.json every N generated entries
 
