@@ -92,11 +92,11 @@ runs are never lost. Re-running resumes — any artwork that already has a
     "instagram": "0009ine",
     "comment": "⟁\n\"dəˈsent\" has survived through the technological singularity…",
     "metrics": {
-      "r0BoostSpike": 2.4,
-      "r0BoostSteady": 1.1,
-      "longTailLongevity": 69,
-      "amplificationProbability": 27,
-      "recognitionDecay": 6
+      "r0BoostSpike": 2.8,
+      "r0BoostSteady": 1.3,
+      "longTailLongevity": 104,
+      "amplificationProbability": 44,
+      "recognitionDecay": 3
     }
   }
 }
@@ -114,19 +114,27 @@ age, plus seeded jitter:
 
 | Field | Units | Range | Meaning |
 | --- | --- | --- | --- |
-| `r0BoostSpike` | × (dimensionless) | 0.5–4 | R₀ boost in the first weeks post-mint. *Derived from* amplification: `P·(follower base entering carrier pool) + (1−P)·campaign baseline`. |
-| `r0BoostSteady` | × (dimensionless) | 0.5–4 | Long-run R₀ boost (≥12 mo). *Derived from* long tail via carrier-duration geometric lift, damped. |
-| `longTailLongevity` | years | 5–140 | Extension to the work's referenceability half-life. |
-| `amplificationProbability` | percent | 10–95 | P(artist publicly propagates the can-form within ~30 days of mint). |
-| `recognitionDecay` | percentage points | 1–15 | Drop in identification rate, original → can-textured version. |
+| `r0BoostSpike` | × (dimensionless) | 1–4 | R₀ boost in the first weeks post-mint. *Derived from* amplification: `P·(follower base entering carrier pool) + baseline`. |
+| `r0BoostSteady` | × (dimensionless) | 0.8–1.5 | Long-run R₀ boost (≥12 mo). *Derived from* long tail via carrier-duration geometric lift, pivoted at the 65yr → ×1.1 reference. |
+| `longTailLongevity` | years | 20–140 | Extension to the work's referenceability half-life. |
+| `amplificationProbability` | percent | 5–60 | P(artist publicly propagates the can-form within ~30 days of mint). |
+| `recognitionDecay` | percentage points | 2–15 | Drop in identification rate, original → can-textured version. |
+
+The three primary metrics lerp across their full range from two composite drivers
+— `spreadDrive` (reach + market + follower:following) and `persistDrive` (market +
+age + reach) — which are stretched and jittered so the ranges are genuinely
+reachable, giving a natural spread (e.g. Spike median ≈2.0 with occasional 4.0).
+Normalization bounds are calibrated to the dataset's ~p5–p95, so the signals span
+[0,1] rather than clustering. `Spike`/`Steady` are derived from the primaries.
+Decay shares `persistDrive` with longevity (inverted), so across the set long tail
+⇒ low decay (corr ≈ −0.9), with per-row jitter for natural noise.
 
 **Deterministic.** All randomness is seeded from the stable `base` key
 (xmur3 → mulberry32), so re-runs are idempotent — the same artwork always yields
-byte-identical metrics, with zero spurious diffs. `Spike`/`Steady` are pure
-derivatives of the other three. Every input is null-safe (neutral ≈ 0.5
-fallbacks), so missing `following`/`price`/`followers` still produce in-range
-values. Values are stored as raw numbers; downstream formats the units
-(`69 years`, `27%`, `×2.4`).
+byte-identical metrics, with zero spurious diffs. Every input is null/zero-safe
+(neutral ≈ 0.5 fallbacks), so missing `following`/`price`/`followers` still produce
+in-range values. Values are stored as raw numbers; downstream formats the units
+(`88 years`, `30%`, `×2.0`).
 
 ## Adding future metadata fields
 

@@ -148,51 +148,48 @@ function computeMetrics(raw, base, nowSec) {
   const price = numOrNull(chain.highestPriceUsd);
   const createdAt = numOrNull(chain.createdAt);
 
-  // --- normalized signals (~[0,1], neutral ≈ 0.5) ---
-  const reach = followersPool > 0
-    ? clamp01((log10(followersPool) - 1.7) / (3.8 - 1.7))     // ~50 .. ~6300 pooled followers
-    : 0.5;
-  const kFactor = followingPool > 0
-    ? clamp01((log10(followersPool / followingPool) + 1) / 2) // followers:following ratio .1 .. 10
-    : 0.5;                                                     // null today → neutral
-  const market = price && price > 0
-    ? clamp01((log10(price) - 2.5) / (6.0 - 2.5))             // ~$316 .. ~$1M
-    : 0.5;
+  // --- normalized signals, calibrated to the dataset's ~p5–p95 so each spans
+  //     [0,1] instead of clustering at 0.5 (the raw inputs are bunched: median
+  //     pooled followers ≈360, median price ≈$9k). All null/zero-safe → neutral.
+  const ratio = followingPool > 0 ? followersPool / followingPool : null;
+  const reach = followersPool > 0 ? clamp01((log10(followersPool) - 1.9) / 1.3) : 0.5;  // ~80 .. ~1600 pooled
+  const kFactor = ratio != null ? clamp01(log10(ratio) / 1.3) : 0.5;                    // followers:following 1 .. ~20
+  const market = price && price > 0 ? clamp01((log10(price) - 3.2) / 1.7) : 0.5;        // ~$1.6k .. ~$80k
   const ageYears = createdAt ? Math.max(0, (nowSec - createdAt) / SECONDS_PER_YEAR) : null;
-  const ageNorm = ageYears == null ? 0.3 : clamp01(ageYears / 6);
+  const ageNorm = ageYears == null ? 0.3 : clamp01((ageYears - 1.0) / 5.0);             // 1 .. 6 yr
 
-  // --- seeded jitter stream (drawn per field so they don't move in lockstep) ---
+  // --- seeded RNG: deterministic per artwork `base`, drawn in a fixed order ---
   const rng = mulberry32(xmur3(base)());
-  const jitter = (spread) => 1 + (rng() - 0.5) * 2 * spread;
+  const jitAdd = (frac) => (rng() - 0.5) * 2 * frac;   // additive: ±frac of a metric's range
+  // Stretch a 0..1 drive around its midpoint so the full target ranges are
+  // actually reachable (the bunched inputs alone never reach the extremes).
+  const stretch = (x, k = 1.5) => clamp01(0.5 + (x - 0.5) * k);
+  // Lerp a stretched drive across [lo,hi] with additive jitter, then clamp+round.
+  const mapRange = (lo, hi, drive, jf, decimals = 0) =>
+    clampRound(lo, hi, lo + (hi - lo) * drive + jitAdd(jf) * (hi - lo), decimals);
 
-  // --- composite drivers (both reach-inclusive) ---
-  const spreadDrive = 0.45 * reach + 0.30 * market + 0.25 * kFactor;   // burst potential
-  const persistDrive = 0.45 * ageNorm + 0.35 * market + 0.20 * reach;  // staying power
+  // --- composite drivers ("combined reach everywhere") ---
+  const spreadDrive = stretch(0.50 * reach + 0.30 * market + 0.20 * kFactor);   // burst potential
+  const persistDrive = stretch(0.45 * market + 0.35 * ageNorm + 0.20 * reach);  // staying power
 
-  // --- primary metrics (clamped to spec ranges; a neutral artwork ≈ exemplar) ---
-  const amplificationProbability =
-    clampRound(10, 95, 20 * (0.5 + 1.4 * spreadDrive) * jitter(0.08));
-  const longTailLongevity =
-    clampRound(5, 140, 65 * (0.45 + 1.1 * persistDrive) * jitter(0.15));
+  // --- primary metrics: lerp across the FULL target range for a natural spread ---
+  const amplificationProbability = mapRange(5, 60, spreadDrive, 0.18);
+  const longTailLongevity        = mapRange(20, 140, persistDrive, 0.18);
   // Decay shares persistDrive with longevity but inverted → long tail ⇒ low decay.
-  const recognitionDecay =
-    clampRound(1, 15, 5 * (0.6 + 1.6 * (1 - persistDrive)) * jitter(0.15));
+  const recognitionDecay         = mapRange(2, 15, stretch(1 - persistDrive), 0.18);
 
-  // --- derived R₀ boost components (lore formulas) ---
-  // Spike: P(amp)·(follower base entering carrier pool) + (1−P)·campaign baseline.
+  // --- derived R₀ boost components (from the primary three, per the lore) ---
+  // Spike (1–4): P(amp)·(follower base entering the carrier pool) + baseline,
+  // jittered. The rare ~4× burst needs both high amplification and high reach.
   const P = amplificationProbability / 100;
-  const expansionIfAmp = 1.5 + 7.0 * reach;        // neutral reach .5 → ~5×
-  const r0BoostSpike = clampRound(0.5, 4, P * expansionIfAmp + (1 - P) * 1.5, 1);
-  // Steady: from R₀ = β·D, carrier duration D = 10yr baseline + long tail. The
-  // geometric lift (D/10)^0.3 is pivoted around the 65yr reference (→ exactly the
-  // ×1.1 exemplar) and damped — active propagation decays faster than awareness,
-  // so only a fraction of the lift translates. Gain 0.5 surfaces the lore's ±0.1
-  // spread (steady runs ~1.0–1.2 across the dataset) instead of collapsing to a
-  // constant 1.1.
-  const REF_LONGEVITY = 65;
+  const r0BoostSpike = clampRound(1, 4, 1.0 + P * (0.8 + 5.0 * reach) + jitAdd(0.07) * 3.0, 1);
+  // Steady (0.8–1.5): from R₀ = β·D, carrier duration D = 10yr baseline + long
+  // tail. The geometric lift (D/10)^0.3, pivoted around the 65yr reference
+  // (→ ×1.1) and damped (active propagation decays faster than awareness), maps
+  // the long tail onto a sticky long-run multiplier.
   const geomLift = ((10 + longTailLongevity) / 10) ** 0.3;
-  const geomLiftRef = ((10 + REF_LONGEVITY) / 10) ** 0.3;
-  const r0BoostSteady = clampRound(0.5, 4, 1.1 + (geomLift - geomLiftRef) * 0.5, 1);
+  const geomLiftRef = ((10 + 65) / 10) ** 0.3;
+  const r0BoostSteady = clampRound(0.8, 1.5, 1.1 + (geomLift - geomLiftRef) * 0.85, 1);
 
   return {
     r0BoostSpike,
