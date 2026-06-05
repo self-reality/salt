@@ -18,7 +18,13 @@
 //      hash. Needs OPENROUTER_API_KEY; skipped (with a warning) when absent.
 //
 // Run:  npm run metadata            (or: node metadata/generate-metadata.js)
-// Flags: --limit N  --start I  --force  --model ID  --metrics-only
+// Flags: --limit N  --start I  --force  --model ID  --models A,B  --max-comments N
+//        --metrics-only
+//
+// `--models A,B` rotates models across generations (an N-comment run splits evenly
+// across them); `--max-comments N` caps newly generated comments this run. Each LLM
+// call requests OpenRouter usage accounting, and a per-model + total cost summary is
+// printed at the end (and on Ctrl-C).
 //
 // Comments require OPENROUTER_API_KEY in .env (see metadata/README.md); the
 // metrics pass runs without it (use --metrics-only to skip comments entirely).
@@ -48,23 +54,145 @@ const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
 // const DEFAULT_MODEL = 'moonshotai/kimi-k2.5';
 const DEFAULT_MODEL = 'deepseek/deepseek-v3.2';
+const SECOND_MODEL = 'deepseek/deepseek-chat-v3-0324'; // alt model for split runs
 const API_KEY = process.env.OPENROUTER_API_KEY;
 const SAVE_EVERY = 10; // flush metadata.json every N generated entries
 
+// Approximate OpenRouter pricing (USD per 1M tokens) — FALLBACK ONLY, used when a
+// response omits the actual `usage.cost`. The run prefers OpenRouter's reported
+// cost; these rates may drift, so estimated figures are flagged in the summary.
+const PRICING = {
+  'deepseek/deepseek-v3.2': { input: 0.27, output: 0.40 },
+  'deepseek/deepseek-chat-v3-0324': { input: 0.27, output: 0.88 },
+};
+
 // ---- CLI -------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { limit: Infinity, start: 0, force: false, model: DEFAULT_MODEL, metricsOnly: false };
+  const opts = {
+    limit: Infinity,
+    start: 0,
+    force: false,
+    models: [DEFAULT_MODEL],
+    maxComments: Infinity,
+    metricsOnly: false,
+  };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     const next = () => argv[(i += 1)];
     if (a === '--limit') opts.limit = parseInt(next(), 10);
     else if (a === '--start') opts.start = parseInt(next(), 10);
     else if (a === '--force') opts.force = true;
-    else if (a === '--model') opts.model = next();
+    else if (a === '--model') opts.models = [next()];
+    else if (a === '--models') opts.models = next().split(',').map((m) => m.trim()).filter(Boolean);
+    else if (a === '--max-comments') opts.maxComments = parseInt(next(), 10);
     else if (a === '--metrics-only') opts.metricsOnly = true;
     else throw new Error(`unknown flag: ${a}`);
   }
+  if (opts.models.length === 0) opts.models = [DEFAULT_MODEL];
   return opts;
+}
+
+// ---- cost tracking ---------------------------------------------------------
+// Per-model running totals, filled from each response's usage block.
+const costs = {}; // model → { calls, promptTokens, completionTokens, totalTokens, cost, estimated }
+
+function costBucket(model) {
+  if (!costs[model]) {
+    costs[model] = {
+      calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0, estimated: false,
+    };
+  }
+  return costs[model];
+}
+
+// Fold one response's `usage` into the model's bucket. Prefers OpenRouter's actual
+// `usage.cost`; falls back to the static PRICING table (flagged estimated) when the
+// route omits a cost but still reports tokens.
+function recordUsage(model, usage) {
+  const b = costBucket(model);
+  b.calls += 1;
+  const promptTok = Number(usage?.prompt_tokens) || 0;
+  const complTok = Number(usage?.completion_tokens) || 0;
+  const totalTok = Number(usage?.total_tokens) || promptTok + complTok;
+  b.promptTokens += promptTok;
+  b.completionTokens += complTok;
+  b.totalTokens += totalTok;
+
+  let cost = Number(usage?.cost);
+  let estimated = false;
+  if (!Number.isFinite(cost)) {
+    const p = PRICING[model];
+    if (p) {
+      cost = (promptTok / 1e6) * p.input + (complTok / 1e6) * p.output;
+      estimated = true;
+    } else {
+      cost = 0;
+      estimated = true;
+    }
+  }
+  b.cost += cost;
+  if (estimated) b.estimated = true;
+  return { cost, totalTok, estimated };
+}
+
+function fmtUsd(n) {
+  return `$${n.toFixed(6)}`;
+}
+
+// Print an aligned per-model table + TOTAL row. Safe to call with zero calls.
+function printCostSummary() {
+  const models = Object.keys(costs);
+  if (models.length === 0) return;
+
+  const rows = models.map((m) => {
+    const b = costs[m];
+    return {
+      model: m + (b.estimated ? ' *' : ''),
+      calls: String(b.calls),
+      prompt: String(b.promptTokens),
+      compl: String(b.completionTokens),
+      total: String(b.totalTokens),
+      cost: fmtUsd(b.cost),
+    };
+  });
+  const totals = models.reduce(
+    (acc, m) => {
+      const b = costs[m];
+      acc.calls += b.calls;
+      acc.prompt += b.promptTokens;
+      acc.compl += b.completionTokens;
+      acc.total += b.totalTokens;
+      acc.cost += b.cost;
+      acc.estimated = acc.estimated || b.estimated;
+      return acc;
+    },
+    { calls: 0, prompt: 0, compl: 0, total: 0, cost: 0, estimated: false },
+  );
+  rows.push({
+    model: 'TOTAL',
+    calls: String(totals.calls),
+    prompt: String(totals.prompt),
+    compl: String(totals.compl),
+    total: String(totals.total),
+    cost: fmtUsd(totals.cost),
+  });
+
+  const headers = { model: 'model', calls: 'calls', prompt: 'prompt_tok', compl: 'compl_tok', total: 'total_tok', cost: 'cost' };
+  const cols = ['model', 'calls', 'prompt', 'compl', 'total', 'cost'];
+  const width = (c) => Math.max(headers[c].length, ...rows.map((r) => r[c].length));
+  const w = Object.fromEntries(cols.map((c) => [c, width(c)]));
+  const pad = (s, c) => (c === 'model' ? s.padEnd(w[c]) : s.padStart(w[c]));
+  const line = (r) => cols.map((c) => pad(r[c], c)).join('  ');
+
+  console.log('\n===== Cost summary =====');
+  console.log(line(headers));
+  console.log(cols.map((c) => '-'.repeat(w[c])).join('  '));
+  for (let i = 0; i < rows.length; i += 1) {
+    if (i === rows.length - 1) console.log(cols.map((c) => '-'.repeat(w[c])).join('  '));
+    console.log(line(rows[i]));
+  }
+  if (totals.estimated) console.log('\n* cost estimated from local pricing table (response omitted usage.cost).');
+  else console.log('\nCosts are actual figures reported by OpenRouter.');
 }
 
 // ---- small helpers (ported verbatim from commenter/generate-comment.js) ------
@@ -231,6 +359,7 @@ function save() {
 
 function saveAndExit(exitCode = 0) {
   save();
+  printCostSummary();
   console.log(`\nSaved ${Object.keys(metadata).length} total metadata entries to ${path.relative(REPO_ROOT, METADATA_PATH)}.`);
   process.exit(exitCode);
 }
@@ -275,10 +404,13 @@ if (commentTemplateFiles.length === 0) {
   process.exit(1);
 }
 
-console.log(`\nGenerating comments for up to ${slice.length} artworks (model: ${opts.model})...\n`);
+const cap = Number.isFinite(opts.maxComments) ? ` up to ${opts.maxComments}` : '';
+console.log(`\nGenerating${cap} comments (models: ${opts.models.join(', ')})...\n`);
 
 let generated = 0;
 for (let i = 0; i < slice.length; i++) {
+  if (generated >= opts.maxComments) break;
+
   const { valid, raw } = slice[i];
   const { creator, metadata: meta } = raw;
   const base = baseFromFilename(valid.filename);
@@ -289,6 +421,10 @@ for (let i = 0; i < slice.length; i++) {
     console.log(`[${i + 1}/${slice.length}] ${base} — already has comment, skipping`);
     continue;
   }
+
+  // Rotate models across generations so a multi-model run splits the workload
+  // evenly (e.g. 2 models over 20 comments → 10 each).
+  const model = opts.models[generated % opts.models.length];
 
   const payload = {
     creator: {
@@ -305,7 +441,7 @@ for (let i = 0; i < slice.length; i++) {
 
   const prompt = promptTemplate + JSON.stringify(payload, null, 2);
 
-  console.log(`[${i + 1}/${slice.length}] Requesting comment for "${creator.username}" (${base})...`);
+  console.log(`[${i + 1}/${slice.length}] Requesting comment for "${creator.username}" (${base}) via ${model}...`);
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -314,8 +450,9 @@ for (let i = 0; i < slice.length; i++) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: opts.model,
+      model,
       messages: [{ role: 'user', content: prompt }],
+      usage: { include: true }, // ask OpenRouter to return actual cost + tokens
     }),
   });
 
@@ -327,6 +464,7 @@ for (let i = 0; i < slice.length; i++) {
 
   const data = await response.json();
   const llmResponse = data.choices[0].message.content.trim();
+  const usage = recordUsage(model, data.usage);
 
   const year1 = randomInt(2027, 2030);
   const year2 = randomInt(year1 + 1, 2036);
@@ -347,10 +485,12 @@ for (let i = 0; i < slice.length; i++) {
     artist: creator.username,
     instagram: instagramHandle(creator),
     comment,
+    commentModel: model,
   };
 
   console.log(`         Artwork: ${title}`);
   console.log(comment);
+  console.log(`         ${model} · ${usage.totalTok} tok · ${fmtUsd(usage.cost)}${usage.estimated ? ' (est)' : ''}`);
   console.log('');
 
   generated += 1;
