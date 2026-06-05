@@ -7,16 +7,21 @@
 // `base` the prerender manifest stores, e.g. "0009__8815061c__d-sent"). Each
 // entry joins manifest.json and the rendered can.
 //
-// Today it produces one field — `comment`, an LLM museum-style critique (ported
-// from the standalone `commenter` project) wrapped in a template with random
-// years + a BIP39-word hash. The per-artwork object is designed to grow more
-// fields over time (weight, longTailLongevity, amplificationProbability, ...);
-// runs merge into existing entries and never clobber sibling keys.
+// It produces two kinds of fields per artwork, merged into one object that never
+// clobbers sibling keys:
+//   1. `metrics` — five viral-epidemiology numbers (R₀ boost spike/steady,
+//      added long-tail longevity, amplification probability, recognition decay)
+//      derived from the artwork's social + market signals plus seeded randomness.
+//      Pure/local, deterministic per `base`, and NOT gated by the LLM/API key.
+//   2. `comment` — an LLM museum-style critique (ported from the standalone
+//      `commenter` project) wrapped in a template with random years + a BIP39
+//      hash. Needs OPENROUTER_API_KEY; skipped (with a warning) when absent.
 //
 // Run:  npm run metadata            (or: node metadata/generate-metadata.js)
-// Flags: --limit N  --start I  --force  --model ID
+// Flags: --limit N  --start I  --force  --model ID  --metrics-only
 //
-// Requires OPENROUTER_API_KEY in .env (see metadata/README.md).
+// Comments require OPENROUTER_API_KEY in .env (see metadata/README.md); the
+// metrics pass runs without it (use --metrics-only to skip comments entirely).
 // -----------------------------------------------------------------------------
 
 import {
@@ -48,7 +53,7 @@ const SAVE_EVERY = 10; // flush metadata.json every N generated entries
 
 // ---- CLI -------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { limit: Infinity, start: 0, force: false, model: DEFAULT_MODEL };
+  const opts = { limit: Infinity, start: 0, force: false, model: DEFAULT_MODEL, metricsOnly: false };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     const next = () => argv[(i += 1)];
@@ -56,6 +61,7 @@ function parseArgs(argv) {
     else if (a === '--start') opts.start = parseInt(next(), 10);
     else if (a === '--force') opts.force = true;
     else if (a === '--model') opts.model = next();
+    else if (a === '--metrics-only') opts.metricsOnly = true;
     else throw new Error(`unknown flag: ${a}`);
   }
   return opts;
@@ -85,13 +91,120 @@ function instagramHandle(creator) {
   return raw.split('?')[0].replace(/\/+$/, '').split('/').pop() || creator?.username || '';
 }
 
+// ---- viral-epidemiology metrics (pure, seeded per artwork) -----------------
+// Five per-artwork numbers baked into metadata for the can's "Anchoring facts"
+// sticker. All randomness is SEEDED from the stable `base` key (never
+// Math.random) so re-runs are idempotent — same input, byte-identical output,
+// zero spurious diffs. See metadata/README.md for the model and field units.
+
+// xmur3 string hash → a 32-bit seed generator.
+function xmur3(str) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i += 1) {
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return () => {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return h >>> 0;
+  };
+}
+// mulberry32 PRNG → deterministic floats in [0, 1).
+function mulberry32(a) {
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const numOrNull = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+const log10 = (x) => Math.log(x) / Math.LN10;
+
+// Clamp to [min,max] and round to `decimals` places.
+function clampRound(min, max, value, decimals = 0) {
+  const v = Math.max(min, Math.min(max, value));
+  const f = 10 ** decimals;
+  return Math.round(v * f) / f;
+}
+
+const SECONDS_PER_YEAR = 31557600; // 365.25 d
+
+// Compute the five viral-epidemiology metrics for one raw dataset entry.
+// "Combined reach everywhere": artist (creator) + owner social are pooled into a
+// single reach signal feeding every metric; price + age are modifiers. Every
+// input may be missing/null → neutral (~0.5) fallbacks keep outputs in range.
+function computeMetrics(raw, base, nowSec) {
+  const creator = raw?.creator || {};
+  const owner = raw?.owner || {};
+  const chain = raw?.chaindata || {};
+
+  const followersPool = (numOrNull(creator.followers) || 0) + (numOrNull(owner.followers) || 0);
+  const followingPool = (numOrNull(creator.following) || 0) + (numOrNull(owner.following) || 0);
+  const price = numOrNull(chain.highestPriceUsd);
+  const createdAt = numOrNull(chain.createdAt);
+
+  // --- normalized signals (~[0,1], neutral ≈ 0.5) ---
+  const reach = followersPool > 0
+    ? clamp01((log10(followersPool) - 1.7) / (3.8 - 1.7))     // ~50 .. ~6300 pooled followers
+    : 0.5;
+  const kFactor = followingPool > 0
+    ? clamp01((log10(followersPool / followingPool) + 1) / 2) // followers:following ratio .1 .. 10
+    : 0.5;                                                     // null today → neutral
+  const market = price && price > 0
+    ? clamp01((log10(price) - 2.5) / (6.0 - 2.5))             // ~$316 .. ~$1M
+    : 0.5;
+  const ageYears = createdAt ? Math.max(0, (nowSec - createdAt) / SECONDS_PER_YEAR) : null;
+  const ageNorm = ageYears == null ? 0.3 : clamp01(ageYears / 6);
+
+  // --- seeded jitter stream (drawn per field so they don't move in lockstep) ---
+  const rng = mulberry32(xmur3(base)());
+  const jitter = (spread) => 1 + (rng() - 0.5) * 2 * spread;
+
+  // --- composite drivers (both reach-inclusive) ---
+  const spreadDrive = 0.45 * reach + 0.30 * market + 0.25 * kFactor;   // burst potential
+  const persistDrive = 0.45 * ageNorm + 0.35 * market + 0.20 * reach;  // staying power
+
+  // --- primary metrics (clamped to spec ranges; a neutral artwork ≈ exemplar) ---
+  const amplificationProbability =
+    clampRound(10, 95, 20 * (0.5 + 1.4 * spreadDrive) * jitter(0.08));
+  const longTailLongevity =
+    clampRound(5, 140, 65 * (0.45 + 1.1 * persistDrive) * jitter(0.15));
+  // Decay shares persistDrive with longevity but inverted → long tail ⇒ low decay.
+  const recognitionDecay =
+    clampRound(1, 15, 5 * (0.6 + 1.6 * (1 - persistDrive)) * jitter(0.15));
+
+  // --- derived R₀ boost components (lore formulas) ---
+  // Spike: P(amp)·(follower base entering carrier pool) + (1−P)·campaign baseline.
+  const P = amplificationProbability / 100;
+  const expansionIfAmp = 1.5 + 7.0 * reach;        // neutral reach .5 → ~5×
+  const r0BoostSpike = clampRound(0.5, 4, P * expansionIfAmp + (1 - P) * 1.5, 1);
+  // Steady: from R₀ = β·D, carrier duration D = 10yr baseline + long tail. The
+  // geometric lift (D/10)^0.3 is pivoted around the 65yr reference (→ exactly the
+  // ×1.1 exemplar) and damped — active propagation decays faster than awareness,
+  // so only a fraction of the lift translates. Gain 0.5 surfaces the lore's ±0.1
+  // spread (steady runs ~1.0–1.2 across the dataset) instead of collapsing to a
+  // constant 1.1.
+  const REF_LONGEVITY = 65;
+  const geomLift = ((10 + longTailLongevity) / 10) ** 0.3;
+  const geomLiftRef = ((10 + REF_LONGEVITY) / 10) ** 0.3;
+  const r0BoostSteady = clampRound(0.5, 4, 1.1 + (geomLift - geomLiftRef) * 0.5, 1);
+
+  return {
+    r0BoostSpike,
+    r0BoostSteady,
+    longTailLongevity,
+    amplificationProbability,
+    recognitionDecay,
+  };
+}
+
 // ---- main ------------------------------------------------------------------
 const opts = parseArgs(process.argv);
-
-if (!API_KEY) {
-  console.error('Error: OPENROUTER_API_KEY is not set. Add it to .env (see metadata/README.md).');
-  process.exit(1);
-}
 
 const dataset = JSON.parse(readFileSync(DATASET_PATH, 'utf8'));
 
@@ -114,13 +227,6 @@ if (existsSync(METADATA_PATH)) {
   }
 }
 
-const promptTemplate = readFileSync(PROMPT_FILE, 'utf8');
-const commentTemplateFiles = readdirSync(TEMPLATES_DIR).filter((name) => /^comment-.*\.md$/i.test(name));
-if (commentTemplateFiles.length === 0) {
-  console.error(`Error: no comment-*.md templates found in ${TEMPLATES_DIR}.`);
-  process.exit(1);
-}
-
 function save() {
   if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(METADATA_PATH, JSON.stringify(metadata, null, 2));
@@ -137,7 +243,42 @@ process.on('SIGINT', () => {
   saveAndExit(0);
 });
 
-console.log(`Generating metadata for up to ${slice.length} artworks (model: ${opts.model})...\n`);
+// ---- metrics pass: pure, local, ungated by the LLM/API key -----------------
+// Runs first so `--metrics-only` (or any run without an API key) still bakes the
+// viral-epidemiology numbers. Deterministic per `base`, so recomputing is always
+// safe; entries that already have `metrics` are left alone unless --force.
+const nowSec = Math.floor(Date.now() / 1000);
+let metricsWritten = 0;
+for (const { valid, raw } of slice) {
+  const base = baseFromFilename(valid.filename);
+  if (!opts.force && metadata[base]?.metrics) continue;
+  metadata[base] = {
+    ...metadata[base],
+    localFilename: valid.filename,
+    metrics: computeMetrics(raw, base, nowSec),
+  };
+  metricsWritten += 1;
+}
+save();
+console.log(`Metrics: wrote ${metricsWritten} of ${slice.length} entries → ${path.relative(REPO_ROOT, METADATA_PATH)}.`);
+
+if (opts.metricsOnly) saveAndExit(0);
+
+if (!API_KEY) {
+  console.warn('\nOPENROUTER_API_KEY not set — metrics written, skipping LLM comments.');
+  console.warn('Add it to .env (see metadata/README.md) to generate comments too.');
+  saveAndExit(0);
+}
+
+// Comment templates (only needed for the LLM pass).
+const promptTemplate = readFileSync(PROMPT_FILE, 'utf8');
+const commentTemplateFiles = readdirSync(TEMPLATES_DIR).filter((name) => /^comment-.*\.md$/i.test(name));
+if (commentTemplateFiles.length === 0) {
+  console.error(`Error: no comment-*.md templates found in ${TEMPLATES_DIR}.`);
+  process.exit(1);
+}
+
+console.log(`\nGenerating comments for up to ${slice.length} artworks (model: ${opts.model})...\n`);
 
 let generated = 0;
 for (let i = 0; i < slice.length; i++) {

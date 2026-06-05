@@ -4,10 +4,19 @@ Generates per-artwork metadata for the SPAM cans and writes it to a single
 `prerender-out/metadata.json`, keyed so each entry joins the prerender
 `manifest.json` and the rendered can.
 
-Today it produces one field — `comment`, an LLM museum-style critique (ported
-from the standalone `commenter` project). The per-artwork object is designed to
-grow over time: `weight`, `Long Tail Longevity`, `Amplification probability`,
-etc. will be added as sibling fields by later passes.
+It produces two kinds of per-artwork fields, merged into one object that never
+clobbers sibling keys:
+
+- **`metrics`** — five viral-epidemiology numbers (see below), derived locally
+  from each artwork's social + market signals plus seeded randomness. Pure and
+  **not** gated by the LLM/API key, so they run even with no key (or
+  `--metrics-only`).
+- **`comment`** — an LLM museum-style critique (ported from the standalone
+  `commenter` project). Needs `OPENROUTER_API_KEY`; skipped with a warning when
+  absent.
+
+The per-artwork object can still grow more sibling fields (e.g. `weight`) by
+later passes the same way.
 
 This runs **next to** `scripts/prerender-textures.js`, not inside it: the LLM
 calls are slow and rate-limited, so keeping them in a separate script lets the
@@ -47,8 +56,9 @@ Flags (mirror the prerender's ergonomics):
 | --- | --- | --- |
 | `--limit N` | ∞ | Process at most N artworks |
 | `--start I` | 0 | Skip the first I artworks (dataset order) |
-| `--force` | off | Regenerate even if a `comment` already exists |
+| `--force` | off | Regenerate even if a `comment`/`metrics` already exist |
 | `--model ID` | `deepseek/deepseek-v3.2` | OpenRouter model (alt: `moonshotai/kimi-k2.5`) |
+| `--metrics-only` | off | Compute & write `metrics` only; skip the LLM comment pass (no API key needed) |
 
 The script saves incrementally (every 10 entries) and on `Ctrl-C`, so partial
 runs are never lost. Re-running resumes — any artwork that already has a
@@ -80,7 +90,14 @@ runs are never lost. Re-running resumes — any artwork that already has a
     "localFilename": "0009__8815061c__d-sent.jpg",
     "artist": "0009",
     "instagram": "0009ine",
-    "comment": "⟁\n\"dəˈsent\" has survived through the technological singularity…"
+    "comment": "⟁\n\"dəˈsent\" has survived through the technological singularity…",
+    "metrics": {
+      "r0BoostSpike": 2.4,
+      "r0BoostSteady": 1.1,
+      "longTailLongevity": 69,
+      "amplificationProbability": 27,
+      "recognitionDecay": 6
+    }
   }
 }
 ```
@@ -88,15 +105,36 @@ runs are never lost. Re-running resumes — any artwork that already has a
 Join it to a rendered can via the `base` key (e.g. `manifest.json`'s `base`
 field and the PNGs under `bands/` / `cans/` share the same name).
 
+## The `metrics` block
+
+Five viral-epidemiology numbers for the can's "Anchoring facts" sticker, computed
+by `computeMetrics()` in `generate-metadata.js` from each artwork's pooled social
+reach (artist `creator` + original `owner` followers/following), market price, and
+age, plus seeded jitter:
+
+| Field | Units | Range | Meaning |
+| --- | --- | --- | --- |
+| `r0BoostSpike` | × (dimensionless) | 0.5–4 | R₀ boost in the first weeks post-mint. *Derived from* amplification: `P·(follower base entering carrier pool) + (1−P)·campaign baseline`. |
+| `r0BoostSteady` | × (dimensionless) | 0.5–4 | Long-run R₀ boost (≥12 mo). *Derived from* long tail via carrier-duration geometric lift, damped. |
+| `longTailLongevity` | years | 5–140 | Extension to the work's referenceability half-life. |
+| `amplificationProbability` | percent | 10–95 | P(artist publicly propagates the can-form within ~30 days of mint). |
+| `recognitionDecay` | percentage points | 1–15 | Drop in identification rate, original → can-textured version. |
+
+**Deterministic.** All randomness is seeded from the stable `base` key
+(xmur3 → mulberry32), so re-runs are idempotent — the same artwork always yields
+byte-identical metrics, with zero spurious diffs. `Spike`/`Steady` are pure
+derivatives of the other three. Every input is null-safe (neutral ≈ 0.5
+fallbacks), so missing `following`/`price`/`followers` still produce in-range
+values. Values are stored as raw numbers; downstream formats the units
+(`69 years`, `27%`, `×2.4`).
+
 ## Adding future metadata fields
 
 Each new field is a sibling key inside the per-artwork object. To add one,
-compute it inside the loop in `generate-metadata.js` and spread it into the
-`metadata[base] = { ...metadata[base], ... }` merge (the merge already preserves
-existing keys, so a comment-only run and a weight-only run can layer cleanly).
+compute it and spread it into a `metadata[base] = { ...metadata[base], ... }`
+merge (the merge preserves existing keys, so a comment-only run, a metrics-only
+run, and a weight-only run all layer cleanly).
 
 - **`weight`** — `lib/dataset.js::formatNetWeight(sizeKb)` already returns the
   label's "Net wt" form (`{ value: "39,8 Mb", unit: "(39834 kilobytes)" }`);
   `sizeKb` is on the validated entry (`valid.sizeKb`).
-- **`Long Tail Longevity`**, **`Amplification probability`** — TBD; compute and
-  merge the same way.
