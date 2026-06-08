@@ -9,16 +9,15 @@
 //
 // Each array entry is a standard token-metadata object:
 //   {
-//     name:        `${title} by ${artist}`,
+//     name:        `${title} by ${artist} [SALTED]`,
 //     description: the LLM museum-style critique (the only stateful field),
 //     image:       `${imageBase}${localFilename}`  (set --image-base to your CID),
 //     external_url: artist instagram (when present),
 //     attributes:  [{ trait_type, value, display_type? }, ...]
 //   }
 //
-// `attributes` carry the catalogue + epidemiology data as OpenSea traits:
-//   - Artist; Date created (display_type date); Net weight + Original size
-//     (strings with units); Origin contract / Origin token ID (provenance).
+// `attributes` carry the epidemiology data as OpenSea traits:
+//   - Origin contract / Origin token ID (provenance of the source SuperRare NFT).
 //   - The five viral-epidemiology numbers — amplification probability
 //     (boost_percentage), recognition decay + long-tail longevity (number), and
 //     R0 boost spike/steady (boost_number + max_value) — derived from the
@@ -54,7 +53,6 @@ import 'dotenv/config';
 
 import { BIP39_WORDS } from './bip39-english.js';
 import { buildEntryFromDatasetItem } from '../lib/dataset.js';
-import { formatDimensions } from '../lib/anchoring-facts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -242,25 +240,14 @@ function baseFromFilename(filename) {
 // only renders name/description/image/attributes — arbitrary top-level keys are
 // ignored), with display_type set so numbers/dates/percentages render natively.
 function buildOpenSeaEntry(valid, raw, base, metrics, comment, imageBase) {
-  // OpenSea `date` wants Unix seconds; prefer the on-chain mint time, else parse ISO.
-  const chainCreated = Number(raw?.chaindata?.createdAt);
-  const createdUnix = Number.isFinite(chainCreated)
-    ? chainCreated
-    : (valid.createdAtIso ? Math.floor(Date.parse(valid.createdAtIso) / 1000) : NaN);
-  const kpx = formatDimensions(valid.width, valid.height);
-
-  // Grouped to mirror OpenSea's sections (Properties → Boosts → Stats → Date).
-  // OpenSea ignores this order — it re-buckets by display_type and alphabetises
-  // within each section — so the grouping is for flat-list wallet views; see
+  // Grouped to mirror OpenSea's sections (Properties → Boosts → Stats). OpenSea
+  // ignores this order — it re-buckets by display_type and alphabetises within
+  // each section — so the grouping is for flat-list wallet views; see
   // metadata/README.md.
   const attributes = [];
 
-  // --- Properties (string traits): identity + provenance ---
-  attributes.push({ trait_type: 'Artist', value: valid.username });
-  if (Number.isFinite(valid.sizeKb)) attributes.push({ trait_type: 'Net weight', value: `${Math.round(valid.sizeKb)} kilobytes` });
-  if (kpx) attributes.push({ trait_type: 'Original size', value: kpx });
-  // Provenance of the source SuperRare NFT (clearly labelled so it isn't mistaken
-  // for this token's own contract).
+  // --- Properties: provenance of the source SuperRare NFT (clearly labelled so
+  // it isn't mistaken for this token's own contract). ---
   if (valid.contractAddress) attributes.push({ trait_type: 'Origin contract', value: valid.contractAddress });
   if (valid.tokenId != null) attributes.push({ trait_type: 'Origin token ID', value: String(valid.tokenId) });
 
@@ -277,11 +264,8 @@ function buildOpenSeaEntry(valid, raw, base, metrics, comment, imageBase) {
     { trait_type: 'Recognition decay (pp)', value: metrics.recognitionDecay, display_type: 'number' },
   );
 
-  // --- Date ---
-  if (Number.isFinite(createdUnix)) attributes.push({ trait_type: 'Date created', value: createdUnix, display_type: 'date' });
-
   const entry = {
-    name: `${valid.name} by ${valid.username}`,
+    name: `${valid.name} by ${valid.username} [SALTED]`,
     description: comment || '',
     image: `${imageBase}${valid.filename}`,
     attributes,

@@ -10,7 +10,7 @@ Each array entry is a standard token object:
 
 ```jsonc
 {
-  "name": "dəˈsent by 0009",          // `${title} by ${artist}`
+  "name": "dəˈsent by 0009 [SALTED]",  // `${title} by ${artist} [SALTED]`
   "description": "▲ \"dəˈsent\" has…",  // the LLM museum critique (only stateful field)
   "image": "ipfs://<CID>/0009__…d-sent.jpg",
   "external_url": "https://instagram.com/0009",   // artist IG, when present
@@ -21,8 +21,8 @@ Each array entry is a standard token object:
 Two layers feed it:
 
 - **deterministic** — everything except `description`. The `name`, `image`, and
-  all `attributes` (catalogue facts + the five viral-epidemiology numbers) are
-  rebuilt from the dataset on every run, seeded per artwork, so they're stable
+  all `attributes` (source-NFT provenance + the five viral-epidemiology numbers)
+  are rebuilt from the dataset on every run, seeded per artwork, so they're stable
   and need no API key (`--metrics-only`).
 - **`description`** — an LLM museum-style critique (ported from the standalone
   `commenter` project). The **only** field preserved across runs, so a re-run
@@ -31,7 +31,7 @@ Two layers feed it:
 
 > OpenSea only renders `name` / `description` / `image` / `animation_url` /
 > `external_url` / `attributes`; arbitrary top-level keys are ignored. That's why
-> every catalogue value lives inside `attributes` as a `trait_type`/`value`
+> every custom value lives inside `attributes` as a `trait_type`/`value`
 > (with `display_type` for numbers/dates), not as a bare top-level field.
 
 This runs **next to** `scripts/prerender-textures.js`, not inside it: the LLM
@@ -110,22 +110,18 @@ dataset order. Each object: `name`, `description`, `image`, optional
 ```json
 [
   {
-    "name": "dəˈsent by 0009",
+    "name": "dəˈsent by 0009 [SALTED]",
     "description": "▲\n\"dəˈsent\" has endured the technological singularity…",
     "image": "ipfs://bafy…/0009__8815061c__d-sent.jpg",
     "external_url": "https://instagram.com/0009",
     "attributes": [
-      { "trait_type": "Artist", "value": "0009" },
-      { "trait_type": "Net weight", "value": "39834 kilobytes" },
-      { "trait_type": "Original size", "value": "9,00x11,37 Kpx" },
       { "trait_type": "Origin contract", "value": "0x8f19032938E53076d000e639Cf087C268b45fDc2" },
       { "trait_type": "Origin token ID", "value": "1" },
       { "trait_type": "Amplification probability", "value": 44, "display_type": "boost_percentage" },
       { "trait_type": "R0 boost spike", "value": 2.8, "display_type": "boost_number", "max_value": 4 },
       { "trait_type": "R0 boost steady", "value": 1.3, "display_type": "boost_number", "max_value": 1.5 },
       { "trait_type": "Long-tail longevity (yr)", "value": 104, "display_type": "number" },
-      { "trait_type": "Recognition decay (pp)", "value": 3, "display_type": "number" },
-      { "trait_type": "Date created", "value": 1674193163, "display_type": "date" }
+      { "trait_type": "Recognition decay (pp)", "value": 3, "display_type": "number" }
     ]
   }
 ]
@@ -143,20 +139,16 @@ dataset order. Each object: `name`, `description`, `image`, optional
 ### The `attributes`
 
 Listed in array order, grouped to mirror OpenSea's sections (Properties →
-Boosts → Stats → Date):
+Boosts → Stats):
 
 | Trait | Source | display_type | Notes |
 | --- | --- | --- | --- |
-| `Artist` | `valid.username` | — | Creator handle. |
-| `Net weight` | `valid.sizeKb` | — | Rounded kilobytes with unit, e.g. `"39834 kilobytes"`. |
-| `Original size` | `valid.width` × `valid.height` | — | `formatDimensions` → `"9,00x11,37 Kpx"`. |
 | `Origin contract` / `Origin token ID` | `valid.contractAddress` / `valid.tokenId` | — | Provenance of the source SuperRare NFT (not this token's own contract). |
 | `Amplification probability` | metric | `boost_percentage` | 5–60%; renders as a Boost ring. |
 | `R0 boost spike` | metric | `boost_number` (`max_value` 4) | 1–4; renders as a Boost ring. |
 | `R0 boost steady` | metric | `boost_number` (`max_value` 1.5) | 0.8–1.5; renders as a Boost ring. |
 | `Long-tail longevity (yr)` | metric | `number` | 20–140 years. |
 | `Recognition decay (pp)` | metric | `number` | 2–15 percentage points (plain stat — boost framing reads wrong for a decay). |
-| `Date created` | `chaindata.createdAt` (Unix s; ISO fallback) | `date` | Mint time. |
 
 **On ordering:** OpenSea ignores array order entirely — it re-buckets traits by
 `display_type` and **alphabetises by `trait_type` within each section**, so
