@@ -117,7 +117,7 @@ dataset order. Each object: `name`, `description`, `image`, optional
     "attributes": [
       { "trait_type": "Artist", "value": "0009" },
       { "trait_type": "Date created", "value": 1674193163, "display_type": "date" },
-      { "trait_type": "Net weight (KB)", "value": 39834, "display_type": "number" },
+      { "trait_type": "Net weight", "value": "39834 kilobytes" },
       { "trait_type": "Original size", "value": "9,00x11,37 Kpx" },
       { "trait_type": "Amplification probability", "value": 44, "display_type": "boost_percentage" },
       { "trait_type": "Recognition decay (pp)", "value": 3, "display_type": "number" },
@@ -146,7 +146,7 @@ dataset order. Each object: `name`, `description`, `image`, optional
 | --- | --- | --- | --- |
 | `Artist` | `valid.username` | — | Creator handle. |
 | `Date created` | `chaindata.createdAt` (Unix s; ISO fallback) | `date` | Mint time. |
-| `Net weight (KB)` | `valid.sizeKb` | `number` | Rounded integer kilobytes. |
+| `Net weight` | `valid.sizeKb` | — | Rounded kilobytes with unit, e.g. `"39834 kilobytes"`. |
 | `Original size` | `valid.width` × `valid.height` | — | `formatDimensions` → `"9,00x11,37 Kpx"`. |
 | `Amplification probability` | metric | `boost_percentage` | 5–60%; renders as a Boost ring. |
 | `Recognition decay (pp)` | metric | `number` | 2–15 percentage points (plain stat — boost framing reads wrong for a decay). |

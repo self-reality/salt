@@ -17,8 +17,8 @@
 //   }
 //
 // `attributes` carry the catalogue + epidemiology data as OpenSea traits:
-//   - Artist; Date created (display_type date); Net weight (KB) (number);
-//     Original size; Origin contract / Origin token ID (provenance).
+//   - Artist; Date created (display_type date); Net weight + Original size
+//     (strings with units); Origin contract / Origin token ID (provenance).
 //   - The five viral-epidemiology numbers — amplification probability
 //     (boost_percentage), recognition decay + long-tail longevity (number), and
 //     R0 boost spike/steady (boost_number + max_value) — derived from the
@@ -253,7 +253,7 @@ function buildOpenSeaEntry(valid, raw, base, metrics, comment, imageBase) {
     attributes.push({ trait_type: 'Date created', value: createdUnix, display_type: 'date' });
   }
   if (Number.isFinite(valid.sizeKb)) {
-    attributes.push({ trait_type: 'Net weight (KB)', value: Math.round(valid.sizeKb), display_type: 'number' });
+    attributes.push({ trait_type: 'Net weight', value: `${Math.round(valid.sizeKb)} kilobytes` });
   }
   const kpx = formatDimensions(valid.width, valid.height);
   if (kpx) attributes.push({ trait_type: 'Original size', value: kpx });
