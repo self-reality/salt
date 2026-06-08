@@ -20,9 +20,9 @@
 //   - Artist; Date created (display_type date); Net weight (KB) (number);
 //     Original size; Origin contract / Origin token ID (provenance).
 //   - The five viral-epidemiology numbers — amplification probability
-//     (boost_percentage), recognition decay, long-tail longevity, R0 boost
-//     spike/steady — derived from the artwork's social + market signals plus
-//     seeded randomness. Pure/local, deterministic per `base`.
+//     (boost_percentage), recognition decay + long-tail longevity (number), and
+//     R0 boost spike/steady (boost_number + max_value) — derived from the
+//     artwork's social + market signals plus seeded randomness. Deterministic.
 //
 // Everything except `description` is deterministic and rebuilt every run; the
 // LLM comment (→ description) is the only field preserved across runs so a
@@ -263,8 +263,9 @@ function buildOpenSeaEntry(valid, raw, base, metrics, comment, imageBase) {
     { trait_type: 'Amplification probability', value: metrics.amplificationProbability, display_type: 'boost_percentage' },
     { trait_type: 'Recognition decay (pp)', value: metrics.recognitionDecay, display_type: 'number' },
     { trait_type: 'Long-tail longevity (yr)', value: metrics.longTailLongevity, display_type: 'number' },
-    { trait_type: 'R0 boost spike', value: metrics.r0BoostSpike, display_type: 'number' },
-    { trait_type: 'R0 boost steady', value: metrics.r0BoostSteady, display_type: 'number' },
+    // The two R₀ boosts render as OpenSea "Boosts" rings; max_value sets the ring scale.
+    { trait_type: 'R0 boost spike', value: metrics.r0BoostSpike, display_type: 'boost_number', max_value: 4 },
+    { trait_type: 'R0 boost steady', value: metrics.r0BoostSteady, display_type: 'boost_number', max_value: 1.5 },
   );
 
   // Provenance of the source SuperRare NFT (clearly labelled so it isn't mistaken

@@ -122,8 +122,8 @@ dataset order. Each object: `name`, `description`, `image`, optional
       { "trait_type": "Amplification probability", "value": 44, "display_type": "boost_percentage" },
       { "trait_type": "Recognition decay (pp)", "value": 3, "display_type": "number" },
       { "trait_type": "Long-tail longevity (yr)", "value": 104, "display_type": "number" },
-      { "trait_type": "R0 boost spike", "value": 2.8, "display_type": "number" },
-      { "trait_type": "R0 boost steady", "value": 1.3, "display_type": "number" },
+      { "trait_type": "R0 boost spike", "value": 2.8, "display_type": "boost_number", "max_value": 4 },
+      { "trait_type": "R0 boost steady", "value": 1.3, "display_type": "boost_number", "max_value": 1.5 },
       { "trait_type": "Origin contract", "value": "0x8f19032938E53076d000e639Cf087C268b45fDc2" },
       { "trait_type": "Origin token ID", "value": "1" }
     ]
@@ -148,11 +148,11 @@ dataset order. Each object: `name`, `description`, `image`, optional
 | `Date created` | `chaindata.createdAt` (Unix s; ISO fallback) | `date` | Mint time. |
 | `Net weight (KB)` | `valid.sizeKb` | `number` | Rounded integer kilobytes. |
 | `Original size` | `valid.width` × `valid.height` | — | `formatDimensions` → `"9,00x11,37 Kpx"`. |
-| `Amplification probability` | metric | `boost_percentage` | 5–60%. |
-| `Recognition decay (pp)` | metric | `number` | 2–15 percentage points. |
+| `Amplification probability` | metric | `boost_percentage` | 5–60%; renders as a Boost ring. |
+| `Recognition decay (pp)` | metric | `number` | 2–15 percentage points (plain stat — boost framing reads wrong for a decay). |
 | `Long-tail longevity (yr)` | metric | `number` | 20–140 years. |
-| `R0 boost spike` | metric | `number` | 1–4. |
-| `R0 boost steady` | metric | `number` | 0.8–1.5. |
+| `R0 boost spike` | metric | `boost_number` (`max_value` 4) | 1–4; renders as a Boost ring. |
+| `R0 boost steady` | metric | `boost_number` (`max_value` 1.5) | 0.8–1.5; renders as a Boost ring. |
 | `Origin contract` / `Origin token ID` | `valid.contractAddress` / `valid.tokenId` | — | Provenance of the source SuperRare NFT (not this token's own contract). |
 
 ## The viral-epidemiology metrics
