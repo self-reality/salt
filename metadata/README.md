@@ -116,16 +116,16 @@ dataset order. Each object: `name`, `description`, `image`, optional
     "external_url": "https://instagram.com/0009",
     "attributes": [
       { "trait_type": "Artist", "value": "0009" },
-      { "trait_type": "Date created", "value": 1674193163, "display_type": "date" },
       { "trait_type": "Net weight", "value": "39834 kilobytes" },
       { "trait_type": "Original size", "value": "9,00x11,37 Kpx" },
+      { "trait_type": "Origin contract", "value": "0x8f19032938E53076d000e639Cf087C268b45fDc2" },
+      { "trait_type": "Origin token ID", "value": "1" },
       { "trait_type": "Amplification probability", "value": 44, "display_type": "boost_percentage" },
-      { "trait_type": "Recognition decay (pp)", "value": 3, "display_type": "number" },
-      { "trait_type": "Long-tail longevity (yr)", "value": 104, "display_type": "number" },
       { "trait_type": "R0 boost spike", "value": 2.8, "display_type": "boost_number", "max_value": 4 },
       { "trait_type": "R0 boost steady", "value": 1.3, "display_type": "boost_number", "max_value": 1.5 },
-      { "trait_type": "Origin contract", "value": "0x8f19032938E53076d000e639Cf087C268b45fDc2" },
-      { "trait_type": "Origin token ID", "value": "1" }
+      { "trait_type": "Long-tail longevity (yr)", "value": 104, "display_type": "number" },
+      { "trait_type": "Recognition decay (pp)", "value": 3, "display_type": "number" },
+      { "trait_type": "Date created", "value": 1674193163, "display_type": "date" }
     ]
   }
 ]
@@ -142,18 +142,27 @@ dataset order. Each object: `name`, `description`, `image`, optional
 
 ### The `attributes`
 
+Listed in array order, grouped to mirror OpenSea's sections (Properties →
+Boosts → Stats → Date):
+
 | Trait | Source | display_type | Notes |
 | --- | --- | --- | --- |
 | `Artist` | `valid.username` | — | Creator handle. |
-| `Date created` | `chaindata.createdAt` (Unix s; ISO fallback) | `date` | Mint time. |
 | `Net weight` | `valid.sizeKb` | — | Rounded kilobytes with unit, e.g. `"39834 kilobytes"`. |
 | `Original size` | `valid.width` × `valid.height` | — | `formatDimensions` → `"9,00x11,37 Kpx"`. |
+| `Origin contract` / `Origin token ID` | `valid.contractAddress` / `valid.tokenId` | — | Provenance of the source SuperRare NFT (not this token's own contract). |
 | `Amplification probability` | metric | `boost_percentage` | 5–60%; renders as a Boost ring. |
-| `Recognition decay (pp)` | metric | `number` | 2–15 percentage points (plain stat — boost framing reads wrong for a decay). |
-| `Long-tail longevity (yr)` | metric | `number` | 20–140 years. |
 | `R0 boost spike` | metric | `boost_number` (`max_value` 4) | 1–4; renders as a Boost ring. |
 | `R0 boost steady` | metric | `boost_number` (`max_value` 1.5) | 0.8–1.5; renders as a Boost ring. |
-| `Origin contract` / `Origin token ID` | `valid.contractAddress` / `valid.tokenId` | — | Provenance of the source SuperRare NFT (not this token's own contract). |
+| `Long-tail longevity (yr)` | metric | `number` | 20–140 years. |
+| `Recognition decay (pp)` | metric | `number` | 2–15 percentage points (plain stat — boost framing reads wrong for a decay). |
+| `Date created` | `chaindata.createdAt` (Unix s; ISO fallback) | `date` | Mint time. |
+
+**On ordering:** OpenSea ignores array order entirely — it re-buckets traits by
+`display_type` and **alphabetises by `trait_type` within each section**, so
+neither cross-section nor within-section order affects it. The grouping above is
+for flat-list renderers (some wallets / indexers) that show `attributes` in array
+order; OpenSea-style grouping there keeps related traits together.
 
 ## The viral-epidemiology metrics
 

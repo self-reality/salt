@@ -242,36 +242,43 @@ function baseFromFilename(filename) {
 // only renders name/description/image/attributes — arbitrary top-level keys are
 // ignored), with display_type set so numbers/dates/percentages render natively.
 function buildOpenSeaEntry(valid, raw, base, metrics, comment, imageBase) {
-  const attributes = [{ trait_type: 'Artist', value: valid.username }];
-
   // OpenSea `date` wants Unix seconds; prefer the on-chain mint time, else parse ISO.
   const chainCreated = Number(raw?.chaindata?.createdAt);
   const createdUnix = Number.isFinite(chainCreated)
     ? chainCreated
     : (valid.createdAtIso ? Math.floor(Date.parse(valid.createdAtIso) / 1000) : NaN);
-  if (Number.isFinite(createdUnix)) {
-    attributes.push({ trait_type: 'Date created', value: createdUnix, display_type: 'date' });
-  }
-  if (Number.isFinite(valid.sizeKb)) {
-    attributes.push({ trait_type: 'Net weight', value: `${Math.round(valid.sizeKb)} kilobytes` });
-  }
   const kpx = formatDimensions(valid.width, valid.height);
+
+  // Grouped to mirror OpenSea's sections (Properties → Boosts → Stats → Date).
+  // OpenSea ignores this order — it re-buckets by display_type and alphabetises
+  // within each section — so the grouping is for flat-list wallet views; see
+  // metadata/README.md.
+  const attributes = [];
+
+  // --- Properties (string traits): identity + provenance ---
+  attributes.push({ trait_type: 'Artist', value: valid.username });
+  if (Number.isFinite(valid.sizeKb)) attributes.push({ trait_type: 'Net weight', value: `${Math.round(valid.sizeKb)} kilobytes` });
   if (kpx) attributes.push({ trait_type: 'Original size', value: kpx });
-
-  // The five viral-epidemiology numbers (the anchoring-facts sticker), as traits.
-  attributes.push(
-    { trait_type: 'Amplification probability', value: metrics.amplificationProbability, display_type: 'boost_percentage' },
-    { trait_type: 'Recognition decay (pp)', value: metrics.recognitionDecay, display_type: 'number' },
-    { trait_type: 'Long-tail longevity (yr)', value: metrics.longTailLongevity, display_type: 'number' },
-    // The two R₀ boosts render as OpenSea "Boosts" rings; max_value sets the ring scale.
-    { trait_type: 'R0 boost spike', value: metrics.r0BoostSpike, display_type: 'boost_number', max_value: 4 },
-    { trait_type: 'R0 boost steady', value: metrics.r0BoostSteady, display_type: 'boost_number', max_value: 1.5 },
-  );
-
   // Provenance of the source SuperRare NFT (clearly labelled so it isn't mistaken
   // for this token's own contract).
   if (valid.contractAddress) attributes.push({ trait_type: 'Origin contract', value: valid.contractAddress });
   if (valid.tokenId != null) attributes.push({ trait_type: 'Origin token ID', value: String(valid.tokenId) });
+
+  // --- Boosts: amplification + the two R₀ boosts (max_value sets the ring scale) ---
+  attributes.push(
+    { trait_type: 'Amplification probability', value: metrics.amplificationProbability, display_type: 'boost_percentage' },
+    { trait_type: 'R0 boost spike', value: metrics.r0BoostSpike, display_type: 'boost_number', max_value: 4 },
+    { trait_type: 'R0 boost steady', value: metrics.r0BoostSteady, display_type: 'boost_number', max_value: 1.5 },
+  );
+
+  // --- Stats (plain numbers) ---
+  attributes.push(
+    { trait_type: 'Long-tail longevity (yr)', value: metrics.longTailLongevity, display_type: 'number' },
+    { trait_type: 'Recognition decay (pp)', value: metrics.recognitionDecay, display_type: 'number' },
+  );
+
+  // --- Date ---
+  if (Number.isFinite(createdUnix)) attributes.push({ trait_type: 'Date created', value: createdUnix, display_type: 'date' });
 
   const entry = {
     name: `${valid.name} by ${valid.username}`,
