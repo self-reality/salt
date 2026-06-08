@@ -3,14 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { loadCan } from '../lib/can.js';
-import { loadLabelAssets, createLabelBuild } from '../lib/label-build.js';
-import {
-  buildRandomManifestFromDataset,
-  buildEntryFromDatasetItem,
-  findArtistInDataset,
-  waveSortManifest,
-  insertIndexInWave,
-} from '../lib/dataset.js';
+import { waveSortManifest, findArtistInManifest } from '../lib/dataset.js';
 
 // ---------------------------------------------------------------------------
 // Asset paths
@@ -18,9 +11,8 @@ import {
 const VAN_GLB_PATH = 'van/apocalyptic-old-van-driveable-with-interior/source/Van.glb';
 const CAN_FBX_PATH = 'bennyrizzo - 1950s-spam/source/Spam can.fbx';
 const CAN_TEXTURE_PATH = 'bennyrizzo - 1950s-spam/textures/';
-const ARTWORK_BASE_PATH = 'artworks/';
-const DATASET_PATH = 'queue/most-expensive-artworks.json';
-const SAMPLE_SIZE = 50;
+const PRERENDER_BASE = 'prerender-out/';
+const MANIFEST_PATH = 'prerender-out/manifest.json';
 const INTERVAL_MS = 300;
 
 const ENV_MAP_URL =
@@ -253,10 +245,10 @@ export async function runVanCanScene() {
 
   const requestedArtist = new URLSearchParams(location.search).get('artist');
 
-  // Build manifest from dataset (used to cycle artworks onto the can label).
-  const fullDataset = await fetch(DATASET_PATH).then((r) => r.json());
-  const manifest = waveSortManifest(
-    buildRandomManifestFromDataset(fullDataset, SAMPLE_SIZE),
+  // Prebaked cans: source the carousel straight from the prerender manifest.
+  const manifestData = await fetch(MANIFEST_PATH).then((r) => r.json());
+  const entries = waveSortManifest(
+    (manifestData.entries || []).filter((e) => e.texture && !e.error),
   );
 
   // --- Queue UI DOM references ---
@@ -413,13 +405,11 @@ export async function runVanCanScene() {
   // handler below can reference it before the can finishes loading.
   let positionPauseButton = () => {};
 
-  const labelBuild = createLabelBuild(await loadLabelAssets());
-
   loadCan({
     modelPath: CAN_FBX_PATH,
     texturePath: CAN_TEXTURE_PATH,
-    labelBuild,
-    onLoaded({ canGroup, material, setArtworkEntry, height }) {
+    baked: true,
+    onLoaded({ canGroup, material, setBakedTexture, preloadBakedTexture, height }) {
       material.envMapIntensity = ENV_MAP_INTENSITY;
 
       canPivot = centerPivot(canGroup, CAN_PIVOT_SCALE);
@@ -427,11 +417,6 @@ export async function runVanCanScene() {
       applyTransforms();
       window.__canGroup = canGroup;
       window.__canPivot = canPivot;
-
-      const loadingEl = document.getElementById('loading');
-      if (loadingEl) loadingEl.classList.add('hidden');
-
-      if (queueUI) queueUI.classList.add('visible');
 
       // Stretch state — distorts the can vertically per artwork aspect ratio.
       const originalHeight = height;
@@ -470,34 +455,26 @@ export async function runVanCanScene() {
         });
       }
 
-      // Artwork cycling state
-      const preloaded = new Array(manifest.length);
-      let loadedCount = 0;
-      let validItems = [];
+      // Artwork cycling state — driven entirely by the prebaked manifest.
+      const validItems = entries;
       let seqIndex = 0;
       let isPaused = false;
       let artworkIntervalId = null;
-      let hasStartedArtwork = false;
-      let requestedArtistHandled = false;
 
-      function updateOverlay(item) {
-        if (overlay) overlay.innerHTML = `${item.username}<br>${item.name}`;
+      // Warm every baked texture so swaps during the loop are instant.
+      for (const e of validItems) preloadBakedTexture(PRERENDER_BASE + e.texture);
+
+      function updateOverlay(entry) {
+        if (overlay) overlay.innerHTML = `${entry.author}<br>${entry.title}`;
       }
 
       function applyArtworkByIndex(index) {
         if (!validItems.length) return;
         const safeIndex = ((index % validItems.length) + validItems.length) % validItems.length;
-        const item = validItems[safeIndex];
-        setArtworkEntry({
-          image: item,
-          title: item._item.name,
-          author: item._item.username,
-          avatarUrl: item._item.avatar,
-          sizeKb: item._item.sizeKb,
-          width: item._item.width,
-          height: item._item.height,
-        }, applyStretchY);
-        updateOverlay(item._item);
+        const entry = validItems[safeIndex];
+        setBakedTexture(PRERENDER_BASE + entry.texture);
+        applyStretchY(entry.stretchY);
+        updateOverlay(entry);
       }
 
       function startArtworkLoop() {
@@ -556,54 +533,25 @@ export async function runVanCanScene() {
         });
       }
 
-      // Search
-      let searchBusy = false;
+      // Search (restricted to the baked set)
+      function showSearchNotFound(message) {
+        if (!searchInput) return;
+        searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
+        searchInput.placeholder = message;
+        searchInput.value = '';
+        setTimeout(() => {
+          searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
+          searchInput.placeholder = 'Artist name…';
+        }, 1500);
+      }
       function performSearch() {
         const query = searchInput?.value.trim();
-        if (!query || searchBusy) return;
-        const match = findArtistInDataset(fullDataset, query);
-        if (!match) {
-          if (searchInput) {
-            searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
-            searchInput.placeholder = 'Not found';
-            searchInput.value = '';
-            setTimeout(() => {
-              searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
-              searchInput.placeholder = 'Artist name…';
-            }, 1500);
-          }
-          return;
-        }
-        searchBusy = true;
-        if (searchButton) searchButton.textContent = '…';
-        const item = buildEntryFromDatasetItem(match);
-        if (!item) { searchBusy = false; if (searchButton) searchButton.textContent = 'Search'; return; }
-        preloadLocalArtwork(
-          item,
-          (img) => {
-            const ar = item.height / item.width;
-            const insertIdx = insertIndexInWave(validItems, ar);
-            validItems.splice(insertIdx, 0, img);
-            pauseOnIndex(insertIdx);
-            positionPauseButton();
-            if (searchInput) searchInput.value = '';
-            searchBusy = false;
-            if (searchButton) searchButton.textContent = 'Search';
-          },
-          () => {
-            if (searchInput) {
-              searchInput.style.borderColor = 'rgba(255,80,80,0.8)';
-              searchInput.placeholder = 'Artwork not found';
-              searchInput.value = '';
-              setTimeout(() => {
-                searchInput.style.borderColor = 'rgba(255,255,255,0.2)';
-                searchInput.placeholder = 'Artist name…';
-              }, 1500);
-            }
-            searchBusy = false;
-            if (searchButton) searchButton.textContent = 'Search';
-          },
-        );
+        if (!query) return;
+        const match = findArtistInManifest(validItems, query);
+        if (!match) { showSearchNotFound('Not found'); return; }
+        pauseOnIndex(validItems.indexOf(match));
+        positionPauseButton();
+        if (searchInput) searchInput.value = '';
       }
 
       if (searchButton) searchButton.addEventListener('click', performSearch);
@@ -611,85 +559,27 @@ export async function runVanCanScene() {
         if (e.key === 'Enter') performSearch();
       });
 
-      function maybeStartFromFirstLoadedArtwork() {
-        if (hasStartedArtwork || !validItems.length) return;
-        stopArtworkLoop();
+      // Kick off the carousel. Everything's already preloaded, so apply the
+      // first baked texture before hiding the loader to avoid a white-can flash.
+      if (validItems.length) {
         seqIndex = 0;
         applyArtworkByIndex(seqIndex);
+        const loadingEl = document.getElementById('loading');
+        if (loadingEl) loadingEl.classList.add('hidden');
+        if (queueUI) queueUI.classList.add('visible');
         positionPauseButton();
-        hasStartedArtwork = true;
         if (!isPaused) startArtworkLoop();
-      }
 
-      // Requested artist via ?artist= param
-      function maybeHandleRequestedArtist() {
-        if (requestedArtistHandled || !requestedArtist) return;
-        requestedArtistHandled = true;
-        const match = findArtistInDataset(fullDataset, requestedArtist);
-        if (!match) return;
-        const item = buildEntryFromDatasetItem(match);
-        if (!item) return;
-        preloadLocalArtwork(
-          item,
-          (img) => {
-            const ar = item.height / item.width;
-            const insertIdx = insertIndexInWave(validItems, ar);
-            validItems.splice(insertIdx, 0, img);
-            pauseOnIndex(insertIdx);
-            positionPauseButton();
-          },
-          () => console.warn(`Requested artist artwork not found: ${item.username}`),
-        );
-      }
-
-      function insertManifestImageInOrder(img, manifestIndex) {
-        img._manifestIndex = manifestIndex;
-        let insertIdx = validItems.length;
-        for (let i = 0; i < validItems.length; i++) {
-          const existingManifestIndex = validItems[i]._manifestIndex;
-          if (Number.isInteger(existingManifestIndex) && existingManifestIndex > manifestIndex) {
-            insertIdx = i;
-            break;
-          }
+        // Optional ?artist= deep-link, restricted to the baked set.
+        if (requestedArtist) {
+          const match = findArtistInManifest(validItems, requestedArtist);
+          if (match) pauseOnIndex(validItems.indexOf(match));
+          else console.warn(`Requested artist not in baked set: ${requestedArtist}`);
         }
-        validItems.splice(insertIdx, 0, img);
-      }
-
-      function preloadLocalArtwork(item, onSuccess, onFailure) {
-        const img = new Image();
-        img._item = item;
-        img.onload = () => onSuccess(img);
-        img.onerror = () => onFailure(item.filename);
-        img.src = ARTWORK_BASE_PATH + item.filename;
-      }
-
-      maybeHandleRequestedArtist();
-
-      for (let i = 0; i < manifest.length; i++) {
-        const item = manifest[i];
-        preloadLocalArtwork(
-          item,
-          (img) => {
-            if (!preloaded[i]) {
-              preloaded[i] = img;
-              insertManifestImageInOrder(img, i);
-              maybeStartFromFirstLoadedArtwork();
-            }
-            loadedCount++;
-            if (loadedCount === manifest.length && validItems.length === 0) {
-              console.warn('No artwork images loaded successfully from manifest.');
-            }
-          },
-          (filename) => {
-            console.warn(
-              `Artwork not found in /artworks: ${filename} (${item.username} — "${item.name}")`,
-            );
-            loadedCount++;
-            if (loadedCount === manifest.length && validItems.length === 0) {
-              console.warn('No artwork images loaded successfully from manifest.');
-            }
-          },
-        );
+      } else {
+        const loadingEl = document.getElementById('loading');
+        if (loadingEl) loadingEl.textContent = 'No pregenerated cans found.';
+        console.warn('No baked cans available in manifest.');
       }
     },
   });
