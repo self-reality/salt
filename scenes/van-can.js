@@ -303,6 +303,13 @@ export async function runVanCanScene() {
   // --- Live tweak state (seeded from responsive layout for current width) ---
   let canPivot = null;
   let vanPivot = null;
+
+  // --- Can-spin state (pointer drag spins only the can about its center) ---
+  let canSpin = null;
+  let spinAngle = 0;
+  let spinVelocity = 0;
+  let dragging = false;
+  let lastPointerX = 0;
   const initialLayout = resolveLayout(window.innerWidth);
   const canState = {
     pos: [...initialLayout.can.pos],
@@ -412,7 +419,14 @@ export async function runVanCanScene() {
     onLoaded({ canGroup, material, setBakedTexture, preloadBakedTexture, height }) {
       material.envMapIntensity = ENV_MAP_INTENSITY;
 
-      canPivot = centerPivot(canGroup, CAN_PIVOT_SCALE);
+      // Nest a spin group at the bbox-centered origin so pointer drag rotates
+      // the can about its own center (centerPivot puts bbox center at the
+      // group origin), while canPivot keeps applying the cinematic layout pose.
+      const centered = centerPivot(canGroup, CAN_PIVOT_SCALE);
+      canSpin = new THREE.Group();
+      canSpin.add(centered);
+      canPivot = new THREE.Group();
+      canPivot.add(canSpin);
       blenderRoot.add(canPivot);
       applyTransforms();
       window.__canGroup = canGroup;
@@ -584,9 +598,36 @@ export async function runVanCanScene() {
     },
   });
 
+  // --- Pointer drag spins only the can about its vertical center axis ---
+  // touch-action: none so a touch-drag spins the can instead of scrolling.
+  renderer.domElement.style.touchAction = 'none';
+  const SPIN_PER_PX = 0.01;
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    lastPointerX = e.clientX;
+    spinVelocity = 0;
+    renderer.domElement.setPointerCapture(e.pointerId);
+  });
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastPointerX;
+    const delta = dx * SPIN_PER_PX;
+    spinAngle += delta;
+    spinVelocity = delta;
+    lastPointerX = e.clientX;
+  });
+  const endDrag = () => { dragging = false; };
+  renderer.domElement.addEventListener('pointerup', endDrag);
+  renderer.domElement.addEventListener('pointercancel', endDrag);
+
   // --- Render loop ---
   function animate() {
     requestAnimationFrame(animate);
+    if (!dragging) {
+      spinAngle += spinVelocity;
+      spinVelocity *= 0.95;
+    }
+    if (canSpin) canSpin.rotation.y = spinAngle;
     renderer.render(scene, camera);
   }
   animate();
