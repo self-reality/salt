@@ -360,6 +360,7 @@ export async function main() {
 
   const artworkSelect = document.getElementById('artwork-select');
   const shuffleBtn = document.getElementById('artwork-shuffle');
+  const copyHandlesBtn = document.getElementById('copy-handles');
   const prevBtn = document.getElementById('artwork-prev');
   const nextBtn = document.getElementById('artwork-next');
 
@@ -410,6 +411,56 @@ export async function main() {
     });
   }
   if (shuffleBtn) shuffleBtn.addEventListener('click', () => populateArtworks());
+
+  // Normalise the dataset's free-form instagram value (usually a profile URL,
+  // sometimes already a bare handle) down to an "@handle". Returns null when
+  // there's nothing usable so the artist is simply skipped in the copied list.
+  function instagramHandle(raw) {
+    if (!raw) return null;
+    let s = String(raw).trim().split(/[?#]/)[0]; // drop query/hash (?hl=en, …)
+    const m = s.match(/instagram\.com\/+([^/]+)/i);
+    if (m) {
+      s = m[1];
+    } else {
+      s = s.replace(/\/+$/, '');
+      const slash = s.lastIndexOf('/');
+      if (slash >= 0) s = s.slice(slash + 1);
+    }
+    s = s.replace(/^@+/, '').replace(/\/+$/, '').trim();
+    return s ? `@${s}` : null;
+  }
+
+  // Copy the Instagram handles of the artists currently in the queue
+  // (currentSamples), deduped and in queue order, one per line.
+  if (copyHandlesBtn) {
+    copyHandlesBtn.addEventListener('click', async () => {
+      const seen = new Set();
+      const handles = [];
+      for (const item of currentSamples) {
+        const handle = instagramHandle(item && item.instagram);
+        if (handle && !seen.has(handle.toLowerCase())) {
+          seen.add(handle.toLowerCase());
+          handles.push(handle);
+        }
+      }
+      const original = copyHandlesBtn.textContent;
+      const flash = (msg) => {
+        copyHandlesBtn.textContent = msg;
+        setTimeout(() => { copyHandlesBtn.textContent = original; }, 1500);
+      };
+      if (!handles.length) {
+        flash('No handles');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(handles.join('\n'));
+        flash(`Copied ${handles.length}`);
+      } catch (err) {
+        console.error('label: clipboard write failed', err);
+        flash('Copy failed');
+      }
+    });
+  }
 
   // Step the queue selection by one, skipping the placeholder at index 0 and
   // wrapping around the ends. dir is -1 (prev) or +1 (next).
