@@ -3,36 +3,42 @@
 //
 // Sibling to scripts/prerender-textures.js: it reads the SAME dataset the
 // prerender uses (queue/most-expensive-artworks.json) and writes a single
-// prerender-out/metadata.json, an object map keyed by artwork base (the same
-// `base` the prerender manifest stores, e.g. "0009__8815061c__d-sent"). Each
-// entry joins manifest.json and the rendered can.
+// prerender-out/metadata.json — an OpenSea / ERC-721-standard ARRAY (one object
+// per artwork, in dataset order), ready to upload to IPFS and serve as the
+// collection's tokenURIs (with minimal changes — see --image-base).
 //
-// It produces three kinds of fields per artwork, merged into one object that
-// never clobbers sibling keys:
-//   1. `metrics` — five viral-epidemiology numbers (R₀ boost spike/steady,
-//      added long-tail longevity, amplification probability, recognition decay)
-//      derived from the artwork's social + market signals plus seeded randomness.
-//      Pure/local, deterministic per `base`, and NOT gated by the LLM/API key.
-//      These ARE the anchoring-facts sticker's spike/steady/longevity/amp/decay.
-//   2. display fields — the catalogue values the dev pages render: `workTitle`,
-//      `author`, `dateCreated`, `netWt` (kilobytes), `contractAddress`,
-//      `tokenId`, `description` (from label.html/label.js) and `originalSizeKpx`
-//      (anchoring-facts). Pure/local, always (re)written so re-runs backfill them.
-//   3. `comment` — an LLM museum-style critique (ported from the standalone
-//      `commenter` project) wrapped in a template with random years + a BIP39
-//      hash. Needs OPENROUTER_API_KEY; skipped (with a warning) when absent.
+// Each array entry is a standard token-metadata object:
+//   {
+//     name:        `${title} by ${artist}`,
+//     description: the LLM museum-style critique (the only stateful field),
+//     image:       `${imageBase}${localFilename}`  (set --image-base to your CID),
+//     external_url: artist instagram (when present),
+//     attributes:  [{ trait_type, value, display_type? }, ...]
+//   }
+//
+// `attributes` carry the catalogue + epidemiology data as OpenSea traits:
+//   - Artist; Date created (display_type date); Net weight (KB) (number);
+//     Original size; Origin contract / Origin token ID (provenance).
+//   - The five viral-epidemiology numbers — amplification probability
+//     (boost_percentage), recognition decay, long-tail longevity, R0 boost
+//     spike/steady — derived from the artwork's social + market signals plus
+//     seeded randomness. Pure/local, deterministic per `base`.
+//
+// Everything except `description` is deterministic and rebuilt every run; the
+// LLM comment (→ description) is the only field preserved across runs so a
+// re-run never re-pays for it.
 //
 // Run:  npm run metadata            (or: node metadata/generate-metadata.js)
 // Flags: --limit N  --start I  --force  --model ID  --models A,B  --max-comments N
-//        --metrics-only
+//        --metrics-only  --image-base <ipfs://CID/ or gateway URL>
 //
 // `--models A,B` rotates models across generations (an N-comment run splits evenly
 // across them); `--max-comments N` caps newly generated comments this run. Each LLM
 // call requests OpenRouter usage accounting, and a per-model + total cost summary is
 // printed at the end (and on Ctrl-C).
 //
-// Comments require OPENROUTER_API_KEY in .env (see metadata/README.md); the
-// metrics pass runs without it (use --metrics-only to skip comments entirely).
+// Descriptions require OPENROUTER_API_KEY in .env (see metadata/README.md); the
+// rest of the metadata assembles without it (use --metrics-only to skip the LLM).
 // -----------------------------------------------------------------------------
 
 import {
@@ -65,6 +71,11 @@ const DEFAULT_MODEL = 'qwen/qwen3-235b-a22b';
 const API_KEY = process.env.OPENROUTER_API_KEY;
 const SAVE_EVERY = 10; // flush metadata.json every N generated entries
 
+// Prefix for each token's `image` URI; the artwork's localFilename is appended.
+// Default is an obvious placeholder — override with --image-base once the images
+// are pinned (e.g. `--image-base ipfs://bafy.../`). Keep the trailing slash.
+const DEFAULT_IMAGE_BASE = 'ipfs://REPLACE_WITH_IMAGES_CID/';
+
 // Approximate OpenRouter pricing (USD per 1M tokens) — FALLBACK ONLY, used when a
 // response omits the actual `usage.cost`. The run prefers OpenRouter's reported
 // cost; these rates may drift, so estimated figures are flagged in the summary.
@@ -84,6 +95,7 @@ function parseArgs(argv) {
     maxComments: Infinity,
     metricsOnly: false,
     compare: false,
+    imageBase: DEFAULT_IMAGE_BASE,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
@@ -96,6 +108,7 @@ function parseArgs(argv) {
     else if (a === '--max-comments') opts.maxComments = parseInt(next(), 10);
     else if (a === '--metrics-only') opts.metricsOnly = true;
     else if (a === '--compare') opts.compare = true;
+    else if (a === '--image-base') opts.imageBase = next();
     else throw new Error(`unknown flag: ${a}`);
   }
   if (opts.models.length === 0) opts.models = [DEFAULT_MODEL];
@@ -223,28 +236,50 @@ function baseFromFilename(filename) {
   return filename.replace(/\.[^.]+$/, '');
 }
 
-// Reduce a creator's instagram URL (or username fallback) to a bare handle.
-function instagramHandle(creator) {
-  const raw = creator?.instagram || creator?.username || '';
-  return raw.split('?')[0].replace(/\/+$/, '').split('/').pop() || creator?.username || '';
-}
+// Build one OpenSea / ERC-721 token-metadata object for an artwork. `comment` is
+// the LLM museum critique (→ description); everything else is deterministic. The
+// catalogue + epidemiology values become flat OpenSea `attributes` (the standard
+// only renders name/description/image/attributes — arbitrary top-level keys are
+// ignored), with display_type set so numbers/dates/percentages render natively.
+function buildOpenSeaEntry(valid, raw, base, metrics, comment, imageBase) {
+  const attributes = [{ trait_type: 'Artist', value: valid.username }];
 
-// Catalogue display fields shown on the can's label + anchoring sticker — pure,
-// local, derived from the validated dataset entry. Mirror lib/dataset.js +
-// label.js formatting so the JSON matches what the dev pages render. The five
-// anchoring-facts numbers (spike/steady/longevity/amp prob/decay) are NOT here:
-// they live under `metrics` (computeMetrics) and are reused as-is.
-function displayFields(valid) {
-  return {
-    workTitle: valid.name,
-    author: valid.username,
-    dateCreated: valid.createdAtIso ? valid.createdAtIso.slice(0, 10) : '',
-    netWt: Number.isFinite(valid.sizeKb) ? Math.round(valid.sizeKb) : null,
-    contractAddress: valid.contractAddress,
-    tokenId: valid.tokenId,
-    description: valid.description,
-    originalSizeKpx: formatDimensions(valid.width, valid.height),
+  // OpenSea `date` wants Unix seconds; prefer the on-chain mint time, else parse ISO.
+  const chainCreated = Number(raw?.chaindata?.createdAt);
+  const createdUnix = Number.isFinite(chainCreated)
+    ? chainCreated
+    : (valid.createdAtIso ? Math.floor(Date.parse(valid.createdAtIso) / 1000) : NaN);
+  if (Number.isFinite(createdUnix)) {
+    attributes.push({ trait_type: 'Date created', value: createdUnix, display_type: 'date' });
+  }
+  if (Number.isFinite(valid.sizeKb)) {
+    attributes.push({ trait_type: 'Net weight (KB)', value: Math.round(valid.sizeKb), display_type: 'number' });
+  }
+  const kpx = formatDimensions(valid.width, valid.height);
+  if (kpx) attributes.push({ trait_type: 'Original size', value: kpx });
+
+  // The five viral-epidemiology numbers (the anchoring-facts sticker), as traits.
+  attributes.push(
+    { trait_type: 'Amplification probability', value: metrics.amplificationProbability, display_type: 'boost_percentage' },
+    { trait_type: 'Recognition decay (pp)', value: metrics.recognitionDecay, display_type: 'number' },
+    { trait_type: 'Long-tail longevity (yr)', value: metrics.longTailLongevity, display_type: 'number' },
+    { trait_type: 'R0 boost spike', value: metrics.r0BoostSpike, display_type: 'number' },
+    { trait_type: 'R0 boost steady', value: metrics.r0BoostSteady, display_type: 'number' },
+  );
+
+  // Provenance of the source SuperRare NFT (clearly labelled so it isn't mistaken
+  // for this token's own contract).
+  if (valid.contractAddress) attributes.push({ trait_type: 'Origin contract', value: valid.contractAddress });
+  if (valid.tokenId != null) attributes.push({ trait_type: 'Origin token ID', value: String(valid.tokenId) });
+
+  const entry = {
+    name: `${valid.name} by ${valid.username}`,
+    description: comment || '',
+    image: `${imageBase}${valid.filename}`,
+    attributes,
   };
+  if (valid.instagram && /^https?:\/\//.test(valid.instagram)) entry.external_url = valid.instagram;
+  return entry;
 }
 
 // ---- viral-epidemiology metrics (pure, seeded per artwork) -----------------
@@ -370,25 +405,55 @@ for (const raw of dataset) {
 }
 const slice = entries.slice(opts.start, opts.start + opts.limit);
 
-// Load existing metadata map (so we merge instead of overwrite).
-let metadata = {};
-if (existsSync(METADATA_PATH)) {
-  try {
-    metadata = JSON.parse(readFileSync(METADATA_PATH, 'utf8'));
-  } catch {
-    metadata = {};
+// Resume: recover existing descriptions so a re-run never re-pays the LLM.
+// Tolerant of the current OpenSea array (description per entry, keyed by the
+// image's filename) and the legacy base-keyed object map (comment/description).
+function loadPriorComments() {
+  if (!existsSync(METADATA_PATH)) return {};
+  let parsed;
+  try { parsed = JSON.parse(readFileSync(METADATA_PATH, 'utf8')); } catch { return {}; }
+  const byBase = {};
+  if (Array.isArray(parsed)) {
+    for (const o of parsed) {
+      const base = baseFromFilename(String(o?.image || '').split('/').pop() || '');
+      if (base && o?.description) byBase[base] = o.description;
+    }
+  } else if (parsed && typeof parsed === 'object') {
+    for (const [base, o] of Object.entries(parsed)) {
+      const c = o?.comment || o?.description;
+      if (c) byBase[base] = c;
+    }
   }
+  return byBase;
+}
+
+// Assemble the FULL validated collection as an OpenSea metadata array, in dataset
+// order. Metrics + attributes are deterministic (recomputed every run); the LLM
+// description is the only stateful field — preserved here and filled by the pass
+// below. --start/--limit select which artworks the LLM pass touches, NOT the
+// array's contents: the file always holds the whole validated collection.
+const nowSec = Math.floor(Date.now() / 1000);
+const ordered = entries.map(({ valid, raw }) => ({ valid, raw, base: baseFromFilename(valid.filename) }));
+const metricsByBase = {};
+for (const { raw, base } of ordered) metricsByBase[base] = computeMetrics(raw, base, nowSec);
+const comments = loadPriorComments(); // base -> description, mutated by the LLM pass
+const relMetadata = path.relative(REPO_ROOT, METADATA_PATH);
+
+function buildArray() {
+  return ordered.map(({ valid, raw, base }) =>
+    buildOpenSeaEntry(valid, raw, base, metricsByBase[base], comments[base], opts.imageBase));
 }
 
 function save() {
   if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
-  writeFileSync(METADATA_PATH, JSON.stringify(metadata, null, 2));
+  writeFileSync(METADATA_PATH, JSON.stringify(buildArray(), null, 2));
 }
 
 function saveAndExit(exitCode = 0) {
   save();
   printCostSummary();
-  console.log(`\nSaved ${Object.keys(metadata).length} total metadata entries to ${path.relative(REPO_ROOT, METADATA_PATH)}.`);
+  const withComments = ordered.filter(({ base }) => comments[base]).length;
+  console.log(`\nSaved ${ordered.length} OpenSea entries (${withComments} with descriptions) → ${relMetadata}.`);
   process.exit(exitCode);
 }
 
@@ -397,35 +462,14 @@ process.on('SIGINT', () => {
   saveAndExit(0);
 });
 
-// ---- metrics pass: pure, local, ungated by the LLM/API key -----------------
-// Runs first so `--metrics-only` (or any run without an API key) still bakes the
-// viral-epidemiology numbers. Deterministic per `base`, so recomputing is always
-// safe; entries that already have `metrics` are left alone unless --force.
-const nowSec = Math.floor(Date.now() / 1000);
-let metricsWritten = 0;
-for (const { valid, raw } of slice) {
-  const base = baseFromFilename(valid.filename);
-  const existing = metadata[base] || {};
-  // Display fields are cheap + deterministic, so always (re)write them — this
-  // backfills new fields onto existing entries on a plain re-run. Metrics are
-  // only (re)computed when missing or --force, leaving comments untouched.
-  const needMetrics = opts.force || !existing.metrics;
-  metadata[base] = {
-    ...existing,
-    localFilename: valid.filename,
-    ...displayFields(valid),
-    metrics: needMetrics ? computeMetrics(raw, base, nowSec) : existing.metrics,
-  };
-  if (needMetrics) metricsWritten += 1;
-}
 save();
-console.log(`Metrics: wrote ${metricsWritten} of ${slice.length} entries → ${path.relative(REPO_ROOT, METADATA_PATH)}.`);
+console.log(`Assembled ${ordered.length} OpenSea entries (${ordered.filter(({ base }) => comments[base]).length} with descriptions) → ${relMetadata}.`);
 
 if (opts.metricsOnly) saveAndExit(0);
 
 if (!API_KEY) {
-  console.warn('\nOPENROUTER_API_KEY not set — metrics written, skipping LLM comments.');
-  console.warn('Add it to .env (see metadata/README.md) to generate comments too.');
+  console.warn('\nOPENROUTER_API_KEY not set — metadata assembled, skipping LLM descriptions.');
+  console.warn('Add it to .env (see metadata/README.md) to generate the museum comments too.');
   saveAndExit(0);
 }
 
@@ -535,9 +579,11 @@ if (opts.compare) {
   process.exit(0);
 }
 
-// ---- default mode: one comment per artwork, rotating models, into metadata ---
+// ---- default mode: one description (museum comment) per artwork ------------
+// Rotates models across generations and writes each result into `comments`,
+// which save() folds into the OpenSea array as the entry's `description`.
 const cap = Number.isFinite(opts.maxComments) ? ` up to ${opts.maxComments}` : '';
-console.log(`\nGenerating${cap} comments (models: ${opts.models.join(', ')})...\n`);
+console.log(`\nGenerating${cap} descriptions (models: ${opts.models.join(', ')})...\n`);
 
 let generated = 0;
 for (let i = 0; i < slice.length; i++) {
@@ -548,9 +594,9 @@ for (let i = 0; i < slice.length; i++) {
   const base = baseFromFilename(valid.filename);
   const title = (meta.name || '').trim();
 
-  // Resume: skip artworks that already have a comment unless --force.
-  if (!opts.force && metadata[base]?.comment) {
-    console.log(`[${i + 1}/${slice.length}] ${base} — already has comment, skipping`);
+  // Resume: skip artworks that already have a description unless --force.
+  if (!opts.force && comments[base]) {
+    console.log(`[${i + 1}/${slice.length}] ${base} — already has description, skipping`);
     continue;
   }
 
@@ -559,21 +605,13 @@ for (let i = 0; i < slice.length; i++) {
   const model = opts.models[generated % opts.models.length];
   const payload = buildPayload(creator, title, meta);
 
-  console.log(`[${i + 1}/${slice.length}] Requesting comment for "${creator.username}" (${base}) via ${model}...`);
+  console.log(`[${i + 1}/${slice.length}] Requesting description for "${creator.username}" (${base}) via ${model}...`);
 
   const res = await generateComment(model, payload, title);
   if (!res) continue;
   const { comment, usage } = res;
 
-  // Merge into the existing per-artwork object so future fields survive.
-  metadata[base] = {
-    ...metadata[base],
-    localFilename: valid.filename,
-    artist: creator.username,
-    instagram: instagramHandle(creator),
-    comment,
-    commentModel: model,
-  };
+  comments[base] = comment;
 
   console.log(`         Artwork: ${title}`);
   console.log(comment);
