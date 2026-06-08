@@ -304,12 +304,13 @@ export async function runVanCanScene() {
   let canPivot = null;
   let vanPivot = null;
 
-  // --- Can-spin state (pointer drag spins only the can about its center) ---
+  // --- Can-spin state (pointer drag tumbles only the can about its center) ---
   let canSpin = null;
-  let spinAngle = 0;
-  let spinVelocity = 0;
   let dragging = false;
   let lastPointerX = 0;
+  let lastPointerY = 0;
+  let spinVelYaw = 0; // radians/frame about world up
+  let spinVelPitch = 0; // radians/frame about camera right
   const initialLayout = resolveLayout(window.innerWidth);
   const canState = {
     pos: [...initialLayout.can.pos],
@@ -598,23 +599,49 @@ export async function runVanCanScene() {
     },
   });
 
-  // --- Pointer drag spins only the can about its vertical center axis ---
-  // touch-action: none so a touch-drag spins the can instead of scrolling.
+  // --- Pointer drag tumbles only the can about its center ---
+  // Horizontal drag yaws about world up; vertical drag pitches about the
+  // camera's right axis — a trackball feel that stays intuitive at any
+  // orientation. touch-action: none so a touch-drag rotates instead of scrolling.
   renderer.domElement.style.touchAction = 'none';
   const SPIN_PER_PX = 0.01;
+  const _worldUp = new THREE.Vector3(0, 1, 0);
+  const _camRight = new THREE.Vector3();
+  const _dq = new THREE.Quaternion();
+  const _qTmp = new THREE.Quaternion();
+  const _worldQ = new THREE.Quaternion();
+  const _parentQ = new THREE.Quaternion();
+
+  // Apply incremental yaw/pitch to the can in world space, then map back to
+  // its local frame so the cinematic layout pose on canPivot is preserved.
+  function applySpinDelta(yaw, pitch) {
+    if (!canSpin) return;
+    _camRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    _dq.setFromAxisAngle(_worldUp, yaw);
+    _qTmp.setFromAxisAngle(_camRight, pitch);
+    _dq.multiply(_qTmp);
+    canSpin.getWorldQuaternion(_worldQ).premultiply(_dq);
+    canSpin.parent.getWorldQuaternion(_parentQ).invert();
+    canSpin.quaternion.copy(_parentQ).multiply(_worldQ);
+  }
+
   renderer.domElement.addEventListener('pointerdown', (e) => {
     dragging = true;
     lastPointerX = e.clientX;
-    spinVelocity = 0;
+    lastPointerY = e.clientY;
+    spinVelYaw = 0;
+    spinVelPitch = 0;
     renderer.domElement.setPointerCapture(e.pointerId);
   });
   renderer.domElement.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    const dx = e.clientX - lastPointerX;
-    const delta = dx * SPIN_PER_PX;
-    spinAngle += delta;
-    spinVelocity = delta;
+    const yaw = (e.clientX - lastPointerX) * SPIN_PER_PX;
+    const pitch = (e.clientY - lastPointerY) * SPIN_PER_PX;
+    applySpinDelta(yaw, pitch);
+    spinVelYaw = yaw;
+    spinVelPitch = pitch;
     lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
   });
   const endDrag = () => { dragging = false; };
   renderer.domElement.addEventListener('pointerup', endDrag);
@@ -623,11 +650,13 @@ export async function runVanCanScene() {
   // --- Render loop ---
   function animate() {
     requestAnimationFrame(animate);
-    if (!dragging) {
-      spinAngle += spinVelocity;
-      spinVelocity *= 0.95;
+    if (!dragging && (spinVelYaw || spinVelPitch)) {
+      applySpinDelta(spinVelYaw, spinVelPitch);
+      spinVelYaw *= 0.95;
+      spinVelPitch *= 0.95;
+      if (Math.abs(spinVelYaw) < 1e-5) spinVelYaw = 0;
+      if (Math.abs(spinVelPitch) < 1e-5) spinVelPitch = 0;
     }
-    if (canSpin) canSpin.rotation.y = spinAngle;
     renderer.render(scene, camera);
   }
   animate();
