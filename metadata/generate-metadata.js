@@ -7,13 +7,18 @@
 // `base` the prerender manifest stores, e.g. "0009__8815061c__d-sent"). Each
 // entry joins manifest.json and the rendered can.
 //
-// It produces two kinds of fields per artwork, merged into one object that never
-// clobbers sibling keys:
+// It produces three kinds of fields per artwork, merged into one object that
+// never clobbers sibling keys:
 //   1. `metrics` — five viral-epidemiology numbers (R₀ boost spike/steady,
 //      added long-tail longevity, amplification probability, recognition decay)
 //      derived from the artwork's social + market signals plus seeded randomness.
 //      Pure/local, deterministic per `base`, and NOT gated by the LLM/API key.
-//   2. `comment` — an LLM museum-style critique (ported from the standalone
+//      These ARE the anchoring-facts sticker's spike/steady/longevity/amp/decay.
+//   2. display fields — the catalogue values the dev pages render: `workTitle`,
+//      `author`, `dateCreated`, `netWt` (kilobytes), `contractAddress`,
+//      `tokenId`, `description` (from label.html/label.js) and `originalSizeKpx`
+//      (anchoring-facts). Pure/local, always (re)written so re-runs backfill them.
+//   3. `comment` — an LLM museum-style critique (ported from the standalone
 //      `commenter` project) wrapped in a template with random years + a BIP39
 //      hash. Needs OPENROUTER_API_KEY; skipped (with a warning) when absent.
 //
@@ -43,6 +48,7 @@ import 'dotenv/config';
 
 import { BIP39_WORDS } from './bip39-english.js';
 import { buildEntryFromDatasetItem } from '../lib/dataset.js';
+import { formatDimensions } from '../lib/anchoring-facts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -223,6 +229,24 @@ function instagramHandle(creator) {
   return raw.split('?')[0].replace(/\/+$/, '').split('/').pop() || creator?.username || '';
 }
 
+// Catalogue display fields shown on the can's label + anchoring sticker — pure,
+// local, derived from the validated dataset entry. Mirror lib/dataset.js +
+// label.js formatting so the JSON matches what the dev pages render. The five
+// anchoring-facts numbers (spike/steady/longevity/amp prob/decay) are NOT here:
+// they live under `metrics` (computeMetrics) and are reused as-is.
+function displayFields(valid) {
+  return {
+    workTitle: valid.name,
+    author: valid.username,
+    dateCreated: valid.createdAtIso ? valid.createdAtIso.slice(0, 10) : '',
+    netWt: Number.isFinite(valid.sizeKb) ? Math.round(valid.sizeKb) : null,
+    contractAddress: valid.contractAddress,
+    tokenId: valid.tokenId,
+    description: valid.description,
+    originalSizeKpx: formatDimensions(valid.width, valid.height),
+  };
+}
+
 // ---- viral-epidemiology metrics (pure, seeded per artwork) -----------------
 // Five per-artwork numbers baked into metadata for the can's "Anchoring facts"
 // sticker. All randomness is SEEDED from the stable `base` key (never
@@ -381,13 +405,18 @@ const nowSec = Math.floor(Date.now() / 1000);
 let metricsWritten = 0;
 for (const { valid, raw } of slice) {
   const base = baseFromFilename(valid.filename);
-  if (!opts.force && metadata[base]?.metrics) continue;
+  const existing = metadata[base] || {};
+  // Display fields are cheap + deterministic, so always (re)write them — this
+  // backfills new fields onto existing entries on a plain re-run. Metrics are
+  // only (re)computed when missing or --force, leaving comments untouched.
+  const needMetrics = opts.force || !existing.metrics;
   metadata[base] = {
-    ...metadata[base],
+    ...existing,
     localFilename: valid.filename,
-    metrics: computeMetrics(raw, base, nowSec),
+    ...displayFields(valid),
+    metrics: needMetrics ? computeMetrics(raw, base, nowSec) : existing.metrics,
   };
-  metricsWritten += 1;
+  if (needMetrics) metricsWritten += 1;
 }
 save();
 console.log(`Metrics: wrote ${metricsWritten} of ${slice.length} entries → ${path.relative(REPO_ROOT, METADATA_PATH)}.`);

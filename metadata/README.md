@@ -4,19 +4,25 @@ Generates per-artwork metadata for the SPAM cans and writes it to a single
 `prerender-out/metadata.json`, keyed so each entry joins the prerender
 `manifest.json` and the rendered can.
 
-It produces two kinds of per-artwork fields, merged into one object that never
+It produces three kinds of per-artwork fields, merged into one object that never
 clobbers sibling keys:
 
 - **`metrics`** — five viral-epidemiology numbers (see below), derived locally
   from each artwork's social + market signals plus seeded randomness. Pure and
   **not** gated by the LLM/API key, so they run even with no key (or
-  `--metrics-only`).
+  `--metrics-only`). These are the anchoring-facts sticker's spike/steady/
+  longevity/amp-prob/decay.
+- **display fields** — the catalogue values the dev pages render: `workTitle`,
+  `author`, `dateCreated`, `netWt` (kilobytes), `contractAddress`, `tokenId`,
+  `description` (from `label.html`/`label.js`) and `originalSizeKpx` (anchoring-
+  facts). Pure/local and **always** (re)written, so a plain re-run backfills them
+  onto existing entries without touching `metrics` or `comment`.
 - **`comment`** — an LLM museum-style critique (ported from the standalone
   `commenter` project). Needs `OPENROUTER_API_KEY`; skipped with a warning when
   absent.
 
-The per-artwork object can still grow more sibling fields (e.g. `weight`) by
-later passes the same way.
+The per-artwork object can still grow more sibling fields by later passes the
+same way.
 
 This runs **next to** `scripts/prerender-textures.js`, not inside it: the LLM
 calls are slow and rate-limited, so keeping them in a separate script lets the
@@ -90,6 +96,14 @@ runs are never lost. Re-running resumes — any artwork that already has a
     "localFilename": "0009__8815061c__d-sent.jpg",
     "artist": "0009",
     "instagram": "0009ine",
+    "workTitle": "dəˈsent",
+    "author": "0009",
+    "dateCreated": "2023-01-20",
+    "netWt": 39834,
+    "contractAddress": "0x8f19032938E53076d000e639Cf087C268b45fDc2",
+    "tokenId": 1,
+    "description": "…",
+    "originalSizeKpx": "9,00x11,37 Kpx",
     "comment": "⟁\n\"dəˈsent\" has survived through the technological singularity…",
     "metrics": {
       "r0BoostSpike": 2.8,
@@ -136,13 +150,31 @@ byte-identical metrics, with zero spurious diffs. Every input is null/zero-safe
 in-range values. Values are stored as raw numbers; downstream formats the units
 (`88 years`, `30%`, `×2.0`).
 
+## The display fields
+
+The catalogue values shown on the can's label and anchoring sticker, written by
+`displayFields(valid)` in `generate-metadata.js` straight from the validated
+dataset entry — pure/local, no API. They are **always** (re)written in the
+metrics pass, so re-running (even `--metrics-only`) backfills them onto existing
+entries without recomputing `metrics` or touching `comment`.
+
+| Field | Source (validated entry) | Notes |
+| --- | --- | --- |
+| `workTitle` | `valid.name` | Artwork name only (author is separate). |
+| `author` | `valid.username` | Creator handle. |
+| `dateCreated` | `valid.createdAtIso` | UTC date portion (`YYYY-MM-DD`), as `label.js`. |
+| `netWt` | `valid.sizeKb` | Rounded **integer kilobytes** (the label's "Net wt" in kB). |
+| `contractAddress` | `valid.contractAddress` | On-chain contract. |
+| `tokenId` | `valid.tokenId` | On-chain token id. |
+| `description` | `valid.description` | Label description text. |
+| `originalSizeKpx` | `valid.width` × `valid.height` | `lib/anchoring-facts.js::formatDimensions` → e.g. `"9,00x11,37 Kpx"`. |
+
+The anchoring sticker's other five facts (spike/steady/longevity/amp-prob/decay)
+are **not** duplicated here — they live in `metrics` (see above).
+
 ## Adding future metadata fields
 
 Each new field is a sibling key inside the per-artwork object. To add one,
 compute it and spread it into a `metadata[base] = { ...metadata[base], ... }`
 merge (the merge preserves existing keys, so a comment-only run, a metrics-only
-run, and a weight-only run all layer cleanly).
-
-- **`weight`** — `lib/dataset.js::formatNetWeight(sizeKb)` already returns the
-  label's "Net wt" form (`{ value: "39,8 Mb", unit: "(39834 kilobytes)" }`);
-  `sizeKb` is on the validated entry (`valid.sizeKb`).
+run, and a display-fields-only run all layer cleanly).
