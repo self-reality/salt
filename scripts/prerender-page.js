@@ -37,6 +37,17 @@ const HARD_MAX_MS = 8000;
 let lb = null;        // the single reusable label build (mirrors scene usage)
 let baseImg = null;   // salt-bitmap.png, decoded once and reused
 
+// Optional overrides passed by the Node driver via the page URL query string.
+// bandResolution → label band canvas width; textureSize → full-can base-map size
+// (square). Both null/NaN ⇒ keep pipeline defaults (4096 band; source PNG size).
+const __params = new URLSearchParams(location.search);
+const __numParam = (key) => {
+  const n = parseInt(__params.get(key), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+const BAND_RESOLUTION = __numParam('bandResolution');
+const TEXTURE_SIZE = __numParam('textureSize');
+
 /** Loads an <img> from a (same-origin) URL, resolving once decoded. */
 function loadImage(url) {
   return new Promise((resolve, reject) => {
@@ -78,8 +89,11 @@ function waitForSettled() {
 /** Bakes the current label band into a full-size base-texture decal canvas. */
 function compositeFullCan(band) {
   const decal = document.createElement('canvas');
-  decal.width = baseImg.naturalWidth;
-  decal.height = baseImg.naturalHeight;
+  // Default to the source PNG's native size; --texture-size overrides to a square.
+  // The composite math below is all in `s = decal.width / TEXTURE_REF_SIZE` units,
+  // so a smaller decal stays pixel-faithful.
+  decal.width = TEXTURE_SIZE ?? baseImg.naturalWidth;
+  decal.height = TEXTURE_SIZE ?? baseImg.naturalHeight;
   const ctx = decal.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(baseImg, 0, 0, decal.width, decal.height);
@@ -171,7 +185,7 @@ window.__prerenderOne = async (entry, outputs) => {
     // medallion measureText() is correct from the first artwork.
     await document.fonts.ready;
     baseImg = await loadImage(BASE_COLOR_URL);
-    lb = createLabelBuild(assets);
+    lb = createLabelBuild(assets, BAND_RESOLUTION != null ? { resolution: BAND_RESOLUTION } : {});
     window.__ready = true;
   } catch (err) {
     window.__initError = String((err && err.message) || err);

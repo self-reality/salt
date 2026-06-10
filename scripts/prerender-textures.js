@@ -10,6 +10,9 @@
 //
 // Run:  npm run prerender            (or: node scripts/prerender-textures.js)
 // Flags: --limit N  --start I  --force  --concurrency N  --port P  --out DIR
+//        --band-resolution PX   (label band canvas width; default 4096)
+//        --texture-size PX      (full-can / model base-color map size; default:
+//                                source salt-bitmap.png size, 4096²)
 // -----------------------------------------------------------------------------
 
 import http from 'node:http';
@@ -41,6 +44,13 @@ function parseArgs(argv) {
     limit: Infinity, start: 0, force: false, concurrency: 1,
     port: 8970, out: path.join(REPO_ROOT, 'prerender-out'),
     outputs: [...ALL_OUTPUTS],
+    // null = keep the pipeline defaults (band: 4096; texture: source PNG size).
+    bandResolution: null, textureSize: null,
+  };
+  const posInt = (raw, flag) => {
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n <= 0) throw new Error(`${flag} needs a positive integer (got: ${raw})`);
+    return n;
   };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
@@ -50,6 +60,8 @@ function parseArgs(argv) {
     else if (a === '--force') opts.force = true;
     else if (a === '--concurrency') opts.concurrency = Math.max(1, parseInt(next(), 10));
     else if (a === '--port') opts.port = parseInt(next(), 10);
+    else if (a === '--band-resolution') opts.bandResolution = posInt(next(), '--band-resolution');
+    else if (a === '--texture-size') opts.textureSize = posInt(next(), '--texture-size');
     else if (a === '--out') opts.out = path.resolve(next());
     else if (a === '--outputs') {
       opts.outputs = next().split(',').map((s) => s.trim()).filter(Boolean);
@@ -180,10 +192,18 @@ async function main() {
   } catch (_) { /* no prior manifest */ }
 
   const server = await startServer(opts.port);
-  const pageUrl = `http://127.0.0.1:${opts.port}/scripts/prerender.html`;
+  // Band resolution + texture size are read once at page init (the label build
+  // is created there and reused), so they ride in on the page URL query string.
+  const query = new URLSearchParams();
+  if (opts.bandResolution != null) query.set('bandResolution', String(opts.bandResolution));
+  if (opts.textureSize != null) query.set('textureSize', String(opts.textureSize));
+  const qs = query.toString();
+  const pageUrl = `http://127.0.0.1:${opts.port}/scripts/prerender.html${qs ? `?${qs}` : ''}`;
   console.log(`serving ${REPO_ROOT} at ${pageUrl}`);
   console.log(`rendering ${items.length} artwork(s) → ${opts.out} (concurrency ${opts.concurrency})`);
   console.log(`outputs: ${opts.outputs.join(', ')}`);
+  console.log(`band resolution: ${opts.bandResolution ?? '4096 (default)'}px; `
+    + `texture size: ${opts.textureSize ?? 'source PNG (4096², default)'}`);
   if (opts.outputs.includes('model-textured')) {
     console.log('note: model-textured GLBs are ~5-6 MB each (base texture dominates).');
   }
