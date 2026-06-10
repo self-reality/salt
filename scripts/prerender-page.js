@@ -13,6 +13,7 @@
 
 import { loadLabelAssets, createLabelBuild } from '/lib/label-build.js';
 import { REF_HEIGHT } from '/lib/label-texture.js';
+import { DEFAULT_SMITHS_TEXT } from '/lib/smiths-text.js';
 import { deriveColors } from '/lib/color-extraction.js';
 import { loadAvatarDataUrl } from '/lib/circle-avatar.js';
 
@@ -119,7 +120,7 @@ const ALL_OUTPUTS = ['band', 'texture', 'model', 'model-textured'];
 
 /**
  * Renders one artwork to the requested outputs.
- * @param {{ filename: string, title: string, author: string, avatarUrl: ?string }} entry
+ * @param {{ filename: string, title: string, author: string, avatarUrl: ?string, smithsText: ?string }} entry
  * @param {string[]} [outputs] - any of 'band' | 'texture' | 'model' | 'model-textured'
  * @returns {Promise<object>} per-output keys (bandPngDataUrl, fullPngDataUrl,
  *   modelGlbB64, modelTexturedGlbB64) + { bandHeight, stretchY, colors, avatarOk }, or { error }
@@ -134,6 +135,10 @@ window.__prerenderOne = async (entry, outputs) => {
     const artworkArgs = {
       image, title: entry.title, author: entry.author, avatarUrl: entry.avatarUrl,
       sizeKb: entry.sizeKb, width: entry.width, height: entry.height,
+      // Per-artwork museum critique from prerender-out/metadata.json. Always pass
+      // a string: lb is reused across artworks, so a null would let the previous
+      // can's text leak through. Fall back to the placeholder when none exists.
+      smithsText: entry.smithsText || DEFAULT_SMITHS_TEXT,
     };
 
     // Arm the settle waiter before kicking off the render cascade. When models

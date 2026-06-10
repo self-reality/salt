@@ -171,6 +171,7 @@ async function newReadyPage(browser, pageUrl) {
 async function main() {
   const opts = parseArgs(process.argv);
   const manifestPath = path.join(opts.out, 'manifest.json');
+  const metadataPath = path.join(opts.out, 'metadata.json');
   const specs = opts.outputs.map((o) => OUTPUT_SPEC[o]);
   for (const spec of specs) await fs.mkdir(path.join(opts.out, spec.dir), { recursive: true });
 
@@ -183,6 +184,24 @@ async function main() {
     .map(buildEntryFromDatasetItem)
     .filter(Boolean) // drop entries missing required fields
     .slice(opts.start, opts.start + opts.limit);
+
+  // LLM-generated museum critiques, baked into each can's wrap-around "Smiths"
+  // text block. These live in the OpenSea metadata.json (generated separately by
+  // metadata/generate-metadata.js), keyed by the image filename's base — the same
+  // base name this script writes outputs under. Best-effort: a missing file or a
+  // base with no entry falls back to the placeholder text in prerender-page.js.
+  const descByBase = new Map();
+  try {
+    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'));
+    for (const e of metadata) {
+      const fname = String(e?.image || '').split('/').pop() || '';
+      const base = baseName(fname);
+      if (base && e?.description) descByBase.set(base, e.description);
+    }
+    console.log(`loaded ${descByBase.size} description(s) from ${path.relative(REPO_ROOT, metadataPath)}`);
+  } catch (_) {
+    console.warn(`no descriptions at ${path.relative(REPO_ROOT, metadataPath)} — using placeholder Smiths text`);
+  }
 
   // Preserve prior manifest entries (resumability) keyed by base name.
   const prior = new Map();
@@ -253,7 +272,7 @@ async function main() {
         const t0 = Date.now();
         const r = await page.evaluate(
           (e, outs) => window.__prerenderOne(e, outs),
-          { filename: item.filename, title: item.name, author: item.username, avatarUrl: item.avatar, sizeKb: item.sizeKb, width: item.width, height: item.height },
+          { filename: item.filename, title: item.name, author: item.username, avatarUrl: item.avatar, sizeKb: item.sizeKb, width: item.width, height: item.height, smithsText: descByBase.get(base) || null },
           opts.outputs,
         );
 
