@@ -107,7 +107,7 @@ export function renderModelFor(entry) {
 // GLTFExporter has no flipY support and GLTFLoader assumes flipY=false; can.js
 // uses flipY=true. Bake the flip by drawing the source onto a vertically-mirrored
 // canvas with flipY=false so the GLB renders upright in standard glTF viewers.
-function flipImageToTexture(img, colorSpace) {
+function flipImageToCanvas(img) {
   const w = img.width || img.naturalWidth;
   const h = img.height || img.naturalHeight;
   const c = document.createElement('canvas');
@@ -116,9 +116,16 @@ function flipImageToTexture(img, colorSpace) {
   ctx.translate(0, h);
   ctx.scale(1, -1);
   ctx.drawImage(img, 0, 0, w, h);
-  const tex = new THREE.CanvasTexture(c);
+  return c;
+}
+
+function flipImageToTexture(img, colorSpace, mimeType) {
+  const tex = new THREE.CanvasTexture(flipImageToCanvas(img));
   tex.colorSpace = colorSpace;
   tex.flipY = false;
+  // GLTFExporter reads userData.mimeType to pick the embedded encoding
+  // (default image/png).
+  if (mimeType) tex.userData.mimeType = mimeType;
   tex.needsUpdate = true;
   return tex;
 }
@@ -167,9 +174,14 @@ async function exportWith(mat) {
  *   full-can canvas plus the can's Metallic/Normal/Roughness maps, all
  *   flip-normalized. Decoupled from loadCan's internal decal (which the page's
  *   settle detector starves by owning onDraw). baseColorCanvas is required.
+ *   - stripSharedMaps: omit the Metallic/Normal/Roughness maps (identical
+ *     across every can — export them once via exportSharedMaps() instead and
+ *     reattach at runtime). Scalar metalness/roughness factors stay.
+ *   - baseColorMime: embedded encoding for the base-color map ('image/jpeg'
+ *     shrinks it ~3-5x vs the PNG default; the artwork is opaque, alpha-free).
  * - bare: a plain material, geometry only.
  */
-export async function exportGlb({ textured, baseColorCanvas }) {
+export async function exportGlb({ textured, baseColorCanvas, stripSharedMaps, baseColorMime }) {
   if (textured) {
     const src = state.material;
     const mat = new THREE.MeshStandardMaterial({
@@ -177,10 +189,12 @@ export async function exportGlb({ textured, baseColorCanvas }) {
       metalness: src.metalness,
       roughness: src.roughness,
       envMapIntensity: src.envMapIntensity,
-      map: flipImageToTexture(baseColorCanvas, THREE.SRGBColorSpace),
-      metalnessMap: flippedTexture(src.metalnessMap),
-      normalMap: flippedTexture(src.normalMap),
-      roughnessMap: flippedTexture(src.roughnessMap),
+      map: flipImageToTexture(baseColorCanvas, THREE.SRGBColorSpace, baseColorMime),
+      ...(stripSharedMaps ? {} : {
+        metalnessMap: flippedTexture(src.metalnessMap),
+        normalMap: flippedTexture(src.normalMap),
+        roughnessMap: flippedTexture(src.roughnessMap),
+      }),
     });
     try {
       return await exportWith(mat);
@@ -196,4 +210,43 @@ export async function exportGlb({ textured, baseColorCanvas }) {
   } finally {
     plain.dispose();
   }
+}
+
+/**
+ * Exports the can's shared PBR maps (identical for every artwork) as PNG data
+ * URLs, for runs that strip them from the per-can GLBs. The metallic-roughness
+ * map replicates GLTFExporter's buildMetalRoughTexture merge byte-for-byte in
+ * pixel terms (R=0, G=roughness, B=metalness, A=255 over a #00ffff fill), and
+ * all maps get the same vertical flip the embedded GLB textures get, so a
+ * runtime that reattaches these sees the exact textures it would have loaded
+ * from an unstripped GLB.
+ */
+export function exportSharedMaps() {
+  const src = state.material;
+  const metalness = flipImageToCanvas(src.metalnessMap.image);
+  const roughness = flipImageToCanvas(src.roughnessMap.image);
+  const w = Math.max(metalness.width, roughness.width);
+  const h = Math.max(metalness.height, roughness.height);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#00ffff';
+  ctx.fillRect(0, 0, w, h);
+  const composite = ctx.getImageData(0, 0, w, h);
+
+  ctx.drawImage(metalness, 0, 0, w, h);
+  const metalData = ctx.getImageData(0, 0, w, h).data;
+  for (let i = 2; i < metalData.length; i += 4) composite.data[i] = metalData[i];
+
+  ctx.drawImage(roughness, 0, 0, w, h);
+  const roughData = ctx.getImageData(0, 0, w, h).data;
+  for (let i = 1; i < roughData.length; i += 4) composite.data[i] = roughData[i];
+
+  ctx.putImageData(composite, 0, 0);
+
+  return {
+    metallicRoughnessPngDataUrl: canvas.toDataURL('image/png'),
+    normalPngDataUrl: flipImageToCanvas(src.normalMap.image).toDataURL('image/png'),
+  };
 }

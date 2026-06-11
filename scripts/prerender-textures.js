@@ -13,6 +13,13 @@
 //        --band-resolution PX   (label band canvas width; default 4096)
 //        --texture-size PX      (full-can / model base-color map size; default:
 //                                source salt-bitmap.png size, 4096²)
+//        --strip-shared-maps    (model-textured GLBs omit the metallic/roughness/
+//                                normal maps — identical in every can — and the
+//                                maps land once in <model-textured dir>/shared-maps/
+//                                for the runtime to reattach; ~260 KB less per GLB)
+//        --basecolor-format F   (png | jpeg; embedded base-color encoding for
+//                                model-textured GLBs. jpeg is ~3-5x smaller;
+//                                default png)
 // -----------------------------------------------------------------------------
 
 import http from 'node:http';
@@ -46,6 +53,7 @@ function parseArgs(argv) {
     outputs: [...ALL_OUTPUTS],
     // null = keep the pipeline defaults (band: 4096; texture: source PNG size).
     bandResolution: null, textureSize: null,
+    stripSharedMaps: false, basecolorFormat: 'png',
   };
   const posInt = (raw, flag) => {
     const n = parseInt(raw, 10);
@@ -62,6 +70,13 @@ function parseArgs(argv) {
     else if (a === '--port') opts.port = parseInt(next(), 10);
     else if (a === '--band-resolution') opts.bandResolution = posInt(next(), '--band-resolution');
     else if (a === '--texture-size') opts.textureSize = posInt(next(), '--texture-size');
+    else if (a === '--strip-shared-maps') opts.stripSharedMaps = true;
+    else if (a === '--basecolor-format') {
+      opts.basecolorFormat = next();
+      if (!['png', 'jpeg'].includes(opts.basecolorFormat)) {
+        throw new Error(`--basecolor-format must be png or jpeg (got: ${opts.basecolorFormat})`);
+      }
+    }
     else if (a === '--out') opts.out = path.resolve(next());
     else if (a === '--outputs') {
       opts.outputs = next().split(',').map((s) => s.trim()).filter(Boolean);
@@ -216,6 +231,8 @@ async function main() {
   const query = new URLSearchParams();
   if (opts.bandResolution != null) query.set('bandResolution', String(opts.bandResolution));
   if (opts.textureSize != null) query.set('textureSize', String(opts.textureSize));
+  if (opts.stripSharedMaps) query.set('stripSharedMaps', '1');
+  if (opts.basecolorFormat !== 'png') query.set('baseColorFormat', opts.basecolorFormat);
   const qs = query.toString();
   const pageUrl = `http://127.0.0.1:${opts.port}/scripts/prerender.html${qs ? `?${qs}` : ''}`;
   console.log(`serving ${REPO_ROOT} at ${pageUrl}`);
@@ -224,11 +241,35 @@ async function main() {
   console.log(`band resolution: ${opts.bandResolution ?? '4096 (default)'}px; `
     + `texture size: ${opts.textureSize ?? 'source PNG (4096², default)'}`);
   if (opts.outputs.includes('model-textured')) {
-    console.log('note: model-textured GLBs are ~5-6 MB each (base texture dominates).');
+    console.log(`model-textured: base color ${opts.basecolorFormat}, shared maps `
+      + `${opts.stripSharedMaps ? 'stripped (written once to shared-maps/)' : 'embedded per GLB'}`);
   }
   console.log('');
 
   const browser = await launchBrowser();
+
+  // The shared PBR maps are identical across every can, so when stripping them
+  // from the GLBs export them exactly once, before the workers start. Goes into
+  // the model-textured output dir so a single static mount serves GLBs + maps.
+  let sharedMapsRel = null;
+  if (opts.stripSharedMaps && opts.outputs.includes('model-textured')) {
+    const page = await newReadyPage(browser, pageUrl);
+    try {
+      const r = await page.evaluate(() => window.__exportSharedMaps());
+      if (r && r.error) throw new Error(`shared maps export failed: ${r.error}`);
+      const dir = `${OUTPUT_SPEC['model-textured'].dir}/shared-maps`;
+      await fs.mkdir(path.join(opts.out, dir), { recursive: true });
+      sharedMapsRel = {
+        metallicRoughness: `${dir}/metallic-roughness.png`,
+        normal: `${dir}/normal.png`,
+      };
+      await fs.writeFile(path.join(opts.out, sharedMapsRel.metallicRoughness), dataUrlToBuffer(r.metallicRoughnessPngDataUrl));
+      await fs.writeFile(path.join(opts.out, sharedMapsRel.normal), dataUrlToBuffer(r.normalPngDataUrl));
+      console.log(`shared maps → ${sharedMapsRel.metallicRoughness}, ${sharedMapsRel.normal}\n`);
+    } finally {
+      await page.close().catch(() => {});
+    }
+  }
 
   const results = new Array(items.length);
   let okCount = 0; let skipCount = 0; let errCount = 0; let avatarMiss = 0;
@@ -311,6 +352,7 @@ async function main() {
       generatedAt: new Date().toISOString(),
       baseTexture: BASE_TEXTURE_REL,
       refHeight: 1032,
+      sharedMaps: sharedMapsRel,
       count: results.filter(Boolean).length,
       entries: results.filter(Boolean),
     };

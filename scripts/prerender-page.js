@@ -41,6 +41,8 @@ let baseImg = null;   // salt-bitmap.png, decoded once and reused
 // Optional overrides passed by the Node driver via the page URL query string.
 // bandResolution → label band canvas width; textureSize → full-can base-map size
 // (square). Both null/NaN ⇒ keep pipeline defaults (4096 band; source PNG size).
+// stripSharedMaps=1 → model-textured GLBs omit the shared PBR maps;
+// baseColorFormat → embedded base-color encoding for model-textured GLBs.
 const __params = new URLSearchParams(location.search);
 const __numParam = (key) => {
   const n = parseInt(__params.get(key), 10);
@@ -48,6 +50,8 @@ const __numParam = (key) => {
 };
 const BAND_RESOLUTION = __numParam('bandResolution');
 const TEXTURE_SIZE = __numParam('textureSize');
+const STRIP_SHARED_MAPS = __params.get('stripSharedMaps') === '1';
+const BASE_COLOR_MIME = __params.get('baseColorFormat') === 'jpeg' ? 'image/jpeg' : null;
 
 /** Loads an <img> from a (same-origin) URL, resolving once decoded. */
 function loadImage(url) {
@@ -174,9 +178,27 @@ window.__prerenderOne = async (entry, outputs) => {
     if (want.has('texture')) out.fullPngDataUrl = decal.toDataURL('image/png');
     if (want.has('model')) out.modelGlbB64 = await mod.exportGlb({ textured: false });
     if (want.has('model-textured')) {
-      out.modelTexturedGlbB64 = await mod.exportGlb({ textured: true, baseColorCanvas: decal });
+      out.modelTexturedGlbB64 = await mod.exportGlb({
+        textured: true,
+        baseColorCanvas: decal,
+        stripSharedMaps: STRIP_SHARED_MAPS,
+        baseColorMime: BASE_COLOR_MIME,
+      });
     }
     return out;
+  } catch (err) {
+    return { error: String((err && err.message) || err) };
+  }
+};
+
+/**
+ * One-shot export of the shared (per-can-identical) PBR maps as PNG data URLs.
+ * Called once per batch by the Node driver when --strip-shared-maps is on.
+ */
+window.__exportSharedMaps = async () => {
+  try {
+    const mod = await ensureModel();
+    return mod.exportSharedMaps();
   } catch (err) {
     return { error: String((err && err.message) || err) };
   }
