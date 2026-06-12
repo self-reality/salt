@@ -407,7 +407,7 @@
  },
  {
   "creator": {
-   "defaultAddress": "0xb94f953f389c45ad3fb71dc917f09ee9df89e722",
+   "defaultAddress": "0xa5641c839b3fb15f852ec7d207d806b889ed9850",
    "username": "antonreva",
    "fullName": "Anton Reva",
    "avatar": null,
@@ -419,7 +419,7 @@
    "bio": "anton reva (b.1988) | the city pretends it is not there"
   },
   "owner": {
-   "defaultAddress": "0xb94f953f389c45ad3fb71dc917f09ee9df89e722",
+   "defaultAddress": "0xa5641c839b3fb15f852ec7d207d806b889ed9850",
    "username": "antonreva",
    "fullName": "Anton Reva",
    "avatar": null,
@@ -465,7 +465,7 @@
  },
  {
   "creator": {
-   "defaultAddress": "0xd6287a66771ad5ff1e56a4aa21f5b424b90a7faf",
+   "defaultAddress": "0xc2d82e633d311b1e021afa239af4ab35cf54c389",
    "username": "camilleaubert",
    "fullName": "Camille Aubert",
    "avatar": null,
@@ -477,7 +477,7 @@
    "bio": "camille aubert (b.1990) lyon | household astronomy"
   },
   "owner": {
-   "defaultAddress": "0xd6287a66771ad5ff1e56a4aa21f5b424b90a7faf",
+   "defaultAddress": "0xc2d82e633d311b1e021afa239af4ab35cf54c389",
    "username": "camilleaubert",
    "fullName": "Camille Aubert",
    "avatar": null,
@@ -523,7 +523,7 @@
  },
  {
   "creator": {
-   "defaultAddress": "0x8dfb1769545c5a77569a3ba380e74e6b17e039fb",
+   "defaultAddress": "0x8d122651f51e574ede06265af0de0167f9275915",
    "username": "marenholt",
    "fullName": "Maren Holt",
    "avatar": null,
@@ -535,7 +535,7 @@
    "bio": "maren holt (b.1982) bergen | surfaces older than us"
   },
   "owner": {
-   "defaultAddress": "0x8dfb1769545c5a77569a3ba380e74e6b17e039fb",
+   "defaultAddress": "0x8d122651f51e574ede06265af0de0167f9275915",
    "username": "marenholt",
    "fullName": "Maren Holt",
    "avatar": null,
@@ -581,7 +581,7 @@
  },
  {
   "creator": {
-   "defaultAddress": "0x95a6c75fefe74b982b831295b4ff96ffe9e51176",
+   "defaultAddress": "0x69857de8a10ee9fd05681520d32ad6a09e7a9fa5",
    "username": "ilyademchenko",
    "fullName": "Ilya Demchenko",
    "avatar": null,
@@ -593,7 +593,7 @@
    "bio": "ilya demchenko (b.1987) | geometry happens by itself"
   },
   "owner": {
-   "defaultAddress": "0x95a6c75fefe74b982b831295b4ff96ffe9e51176",
+   "defaultAddress": "0x69857de8a10ee9fd05681520d32ad6a09e7a9fa5",
    "username": "ilyademchenko",
    "fullName": "Ilya Demchenko",
    "avatar": null,
@@ -639,7 +639,7 @@
  },
  {
   "creator": {
-   "defaultAddress": "0xa665f669cc83d8ad619ca23cbe578472ad92d341",
+   "defaultAddress": "0x81e88952e3a56b1e166766dd9533ce51c4a1a3b9",
    "username": "sofiamarder",
    "fullName": "Sofia Marder",
    "avatar": null,
@@ -651,7 +651,7 @@
    "bio": "sofia marder (b.1995) | after the wind, the bookkeeping"
   },
   "owner": {
-   "defaultAddress": "0xa665f669cc83d8ad619ca23cbe578472ad92d341",
+   "defaultAddress": "0x81e88952e3a56b1e166766dd9533ce51c4a1a3b9",
    "username": "sofiamarder",
    "fullName": "Sofia Marder",
    "avatar": null,
