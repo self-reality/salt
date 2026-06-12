@@ -25,7 +25,6 @@ const TEXTURE_REF_SIZE = 1024;
 const LABEL_BAND_Y = 501;
 const LABEL_BAND_HEIGHT = 259;
 const BASE_COLOR_URL = '/bennyrizzo - 1950s-spam/textures/salt-bitmap.png';
-const ARTWORK_BASE = '/artworks/';
 
 // Quiescence tuning: a setArtwork() kicks off a burst of async draws (SVG layer
 // rasters, background pattern, anchoring + smiths renders, and a second
@@ -52,6 +51,9 @@ const BAND_RESOLUTION = __numParam('bandResolution');
 const TEXTURE_SIZE = __numParam('textureSize');
 const STRIP_SHARED_MAPS = __params.get('stripSharedMaps') === '1';
 const BASE_COLOR_MIME = __params.get('baseColorFormat') === 'jpeg' ? 'image/jpeg' : null;
+// artworkBase → where artwork images are served from (probe mode points this at
+// /artworks/probe/ so probe images stay out of the real artworks folder).
+const ARTWORK_BASE = __params.get('artworkBase') || '/artworks/';
 
 /** Loads an <img> from a (same-origin) URL, resolving once decoded. */
 function loadImage(url) {

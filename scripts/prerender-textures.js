@@ -10,6 +10,11 @@
 //
 // Run:  npm run prerender            (or: node scripts/prerender-textures.js)
 // Flags: --limit N  --start I  --force  --concurrency N  --port P  --out DIR
+//        --probe                (render the CONTROLLED PROBE set instead: reads
+//                                queue/probe-artworks.json, loads images from
+//                                artworks/probe/, writes to prerender-out-probe/
+//                                — probe artifacts never mix with the real
+//                                collection's dataset, artworks or outputs)
 //        --band-resolution PX   (label band canvas width; default 4096)
 //        --texture-size PX      (full-can / model base-color map size; default:
 //                                source salt-bitmap.png size, 4096²)
@@ -33,6 +38,8 @@ import puppeteer from 'puppeteer';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 const DATASET_PATH = path.join(REPO_ROOT, 'queue', 'most-expensive-artworks.json');
+const PROBE_DATASET_PATH = path.join(REPO_ROOT, 'queue', 'probe-artworks.json');
+const PROBE_OUT = path.join(REPO_ROOT, 'prerender-out-probe');
 const BASE_TEXTURE_REL = 'bennyrizzo - 1950s-spam/textures/salt-bitmap.png';
 
 // Per-output spec: which page result key carries the base64 blob, where it's
@@ -54,7 +61,9 @@ function parseArgs(argv) {
     // null = keep the pipeline defaults (band: 4096; texture: source PNG size).
     bandResolution: null, textureSize: null,
     stripSharedMaps: false, basecolorFormat: 'png',
+    probe: false, dataset: DATASET_PATH, artworkBase: null,
   };
+  let outExplicit = false;
   const posInt = (raw, flag) => {
     const n = parseInt(raw, 10);
     if (!Number.isFinite(n) || n <= 0) throw new Error(`${flag} needs a positive integer (got: ${raw})`);
@@ -77,13 +86,21 @@ function parseArgs(argv) {
         throw new Error(`--basecolor-format must be png or jpeg (got: ${opts.basecolorFormat})`);
       }
     }
-    else if (a === '--out') opts.out = path.resolve(next());
+    else if (a === '--out') { opts.out = path.resolve(next()); outExplicit = true; }
+    else if (a === '--probe') opts.probe = true;
     else if (a === '--outputs') {
       opts.outputs = next().split(',').map((s) => s.trim()).filter(Boolean);
       const bad = opts.outputs.filter((o) => !ALL_OUTPUTS.includes(o));
       if (bad.length) throw new Error(`unknown --outputs value(s): ${bad.join(', ')} (valid: ${ALL_OUTPUTS.join(', ')})`);
       if (!opts.outputs.length) throw new Error('--outputs needs at least one value');
     } else throw new Error(`unknown flag: ${a}`);
+  }
+  // Probe mode: separate dataset in, separate image dir, separate output dir —
+  // nothing probe-related ever lands next to the real collection's artifacts.
+  if (opts.probe) {
+    opts.dataset = PROBE_DATASET_PATH;
+    opts.artworkBase = '/artworks/probe/';
+    if (!outExplicit) opts.out = PROBE_OUT;
   }
   return opts;
 }
@@ -194,7 +211,7 @@ async function main() {
   const { buildEntryFromDatasetItem } = await import(
     pathToFileURL(path.join(REPO_ROOT, 'lib', 'dataset.js')).href
   );
-  const dataset = JSON.parse(await fs.readFile(DATASET_PATH, 'utf8'));
+  const dataset = JSON.parse(await fs.readFile(opts.dataset, 'utf8'));
   const items = dataset
     .map(buildEntryFromDatasetItem)
     .filter(Boolean) // drop entries missing required fields
@@ -233,9 +250,11 @@ async function main() {
   if (opts.textureSize != null) query.set('textureSize', String(opts.textureSize));
   if (opts.stripSharedMaps) query.set('stripSharedMaps', '1');
   if (opts.basecolorFormat !== 'png') query.set('baseColorFormat', opts.basecolorFormat);
+  if (opts.artworkBase) query.set('artworkBase', opts.artworkBase);
   const qs = query.toString();
   const pageUrl = `http://127.0.0.1:${opts.port}/scripts/prerender.html${qs ? `?${qs}` : ''}`;
   console.log(`serving ${REPO_ROOT} at ${pageUrl}`);
+  if (opts.probe) console.log(`*** PROBE MODE — dataset ${path.relative(REPO_ROOT, opts.dataset)}, images ${opts.artworkBase} ***`);
   console.log(`rendering ${items.length} artwork(s) → ${opts.out} (concurrency ${opts.concurrency})`);
   console.log(`outputs: ${opts.outputs.join(', ')}`);
   console.log(`band resolution: ${opts.bandResolution ?? '4096 (default)'}px; `

@@ -30,6 +30,9 @@
 // Run:  npm run metadata            (or: node metadata/generate-metadata.js)
 // Flags: --limit N  --start I  --force  --model ID  --models A,B  --max-comments N
 //        --metrics-only  --image-base <ipfs://CID/ or gateway URL>
+//        --probe  (CONTROLLED PROBE set: reads queue/probe-artworks.json and
+//                  writes prerender-out-probe/metadata.json — probe metadata
+//                  never mixes with the real collection's)
 //
 // `--models A,B` rotates models across generations (an N-comment run splits evenly
 // across them); `--max-comments N` caps newly generated comments this run. Each LLM
@@ -56,10 +59,6 @@ import { buildEntryFromDatasetItem } from '../lib/dataset.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
-const DATASET_PATH = path.join(REPO_ROOT, 'queue', 'most-expensive-artworks.json');
-const OUT_DIR = path.join(REPO_ROOT, 'prerender-out');
-const METADATA_PATH = path.join(OUT_DIR, 'metadata.json');
-const COMPARE_PATH = path.join(OUT_DIR, 'comment-comparison.json');
 const PROMPT_FILE = path.join(__dirname, 'templates', 'prompt.md');
 const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
@@ -94,6 +93,7 @@ function parseArgs(argv) {
     metricsOnly: false,
     compare: false,
     imageBase: DEFAULT_IMAGE_BASE,
+    probe: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
@@ -107,6 +107,7 @@ function parseArgs(argv) {
     else if (a === '--metrics-only') opts.metricsOnly = true;
     else if (a === '--compare') opts.compare = true;
     else if (a === '--image-base') opts.imageBase = next();
+    else if (a === '--probe') opts.probe = true;
     else throw new Error(`unknown flag: ${a}`);
   }
   if (opts.models.length === 0) opts.models = [DEFAULT_MODEL];
@@ -385,6 +386,16 @@ function computeMetrics(raw, base, nowSec) {
 
 // ---- main ------------------------------------------------------------------
 const opts = parseArgs(process.argv);
+
+// --probe routes everything to a sibling dataset + output folder so probe
+// metadata never mixes with the real collection's (see queue/probe-artworks.json).
+const DATASET_PATH = path.join(
+  REPO_ROOT, 'queue',
+  opts.probe ? 'probe-artworks.json' : 'most-expensive-artworks.json',
+);
+const OUT_DIR = path.join(REPO_ROOT, opts.probe ? 'prerender-out-probe' : 'prerender-out');
+const METADATA_PATH = path.join(OUT_DIR, 'metadata.json');
+const COMPARE_PATH = path.join(OUT_DIR, 'comment-comparison.json');
 
 const dataset = JSON.parse(readFileSync(DATASET_PATH, 'utf8'));
 
