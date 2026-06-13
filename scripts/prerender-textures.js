@@ -235,11 +235,15 @@ async function main() {
     console.warn(`no descriptions at ${path.relative(REPO_ROOT, metadataPath)} — using placeholder Smiths text`);
   }
 
-  // Preserve prior manifest entries (resumability) keyed by base name.
+  // Preserve prior manifest entries (resumability) keyed by base name, plus the
+  // prior top-level sharedMaps pointer so a run that doesn't regenerate shared
+  // maps (e.g. --outputs texture) doesn't blank it out of the manifest.
   const prior = new Map();
+  let priorSharedMaps = null;
   try {
     const old = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
     for (const e of old.entries || []) prior.set(e.base, e);
+    priorSharedMaps = old.sharedMaps ?? null;
   } catch (_) { /* no prior manifest */ }
 
   const server = await startServer(opts.port);
@@ -373,7 +377,7 @@ async function main() {
       generatedAt: new Date().toISOString(),
       baseTexture: BASE_TEXTURE_REL,
       refHeight: 1032,
-      sharedMaps: sharedMapsRel,
+      sharedMaps: sharedMapsRel ?? priorSharedMaps,
       count: results.filter(Boolean).length,
       entries: results.filter(Boolean),
     };
