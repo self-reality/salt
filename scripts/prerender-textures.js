@@ -311,17 +311,19 @@ async function main() {
           rel: `${spec.dir}/${base}${spec.ext}`,
         }));
 
-        // Base manifest entry shared by skip/render/error paths; every output
-        // field starts null and is filled when that file lands.
+        // Base manifest entry shared by skip/render/error paths. Output fields
+        // seed from the prior manifest entry (if any) so a single-output run
+        // (e.g. --outputs model-textured) doesn't null out paths an earlier run
+        // baked; the selected outputs below overwrite with this run's paths.
+        const kept = prior.get(base);
         const entry = {
           localFilename: item.filename, base, title: item.name, author: item.username,
           avatarUrl: item.avatar, width: item.width, height: item.height,
         };
-        for (const o of ALL_OUTPUTS) entry[OUTPUT_SPEC[o].field] = null;
+        for (const o of ALL_OUTPUTS) entry[OUTPUT_SPEC[o].field] = kept?.[OUTPUT_SPEC[o].field] ?? null;
 
         // Skip only when ALL selected outputs already exist.
         if (!opts.force && (await Promise.all(targets.map((t) => fileExists(t.abs)))).every(Boolean)) {
-          const kept = prior.get(base);
           for (const t of targets) entry[t.spec.field] = t.rel;
           results[i] = kept ? { ...kept, ...entry, skipped: true } : { ...entry, skipped: true };
           skipCount += 1;
