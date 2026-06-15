@@ -154,6 +154,17 @@ export async function main() {
   wireSpacingSlider(spacingAboveInput, spacingAboveValue, 'above');
   wireSpacingSlider(spacingBelowInput, spacingBelowValue, 'below');
 
+  // Caption ↔ handle gap — drives builder.setPairGap() so the left-column
+  // caption/handle pair re-centres live as you drag.
+  const captionGapInput = document.getElementById('caption-gap');
+  const captionGapValue = document.getElementById('caption-gap-value');
+  if (captionGapInput) {
+    captionGapInput.addEventListener('input', () => {
+      if (captionGapValue) captionGapValue.textContent = captionGapInput.value;
+      lb.setPairGap(parseFloat(captionGapInput.value));
+    });
+  }
+
   // Smiths description — the long passage that wraps the can vertically. Seed
   // the textarea with the default the build already starts with; pipe edits in.
   if (smithsInput) {
