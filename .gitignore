@@ -46,8 +46,12 @@ build/
 *.min.js
 *.min.css
 
-# Prerendered texture output
-prerender-out/
+# Prerendered texture output — ship only what the van-can scene needs
+# (manifest + downscaled 1024² cans); bands/, models-textured/, logs/,
+# and the 4K masters (cans-4096-src/) stay out of the deploy.
+prerender-out/*
+!prerender-out/manifest.json
+!prerender-out/cans/
 
 # Temporary files
 *.tmp
